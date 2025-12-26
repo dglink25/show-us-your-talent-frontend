@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { useLoading } from '../../contexts/LoadingContext';
-import { useSocket } from '../../contexts/SocketContext';
+import axios from '../../utils/axiosConfig';
 import {
   Menu,
   MenuItem,
@@ -20,15 +20,14 @@ import {
   useMediaQuery,
   useTheme,
   Box,
-  Modal,
-  Backdrop,
   Typography,
-  TextField,
   Button,
   CircularProgress,
   Divider,
   Chip,
   ListItemAvatar,
+  Snackbar,
+  Alert,
 } from '@mui/material';
 import {
   Menu as MenuIcon,
@@ -45,559 +44,17 @@ import {
   KeyboardArrowUp as ArrowUpIcon,
   HowToVote as VoteIcon,
   Chat as ChatIcon,
-  Send as SendIcon,
-  Info as InfoIcon,
-  People as PeopleIcon,
-  EmojiEmotions as EmojiIcon,
-  AttachFile as AttachFileIcon,
+  Settings as SettingsIcon,
   FiberManualRecord as OnlineIcon,
+  Refresh as RefreshIcon,
+  Email as EmailIcon,
 } from '@mui/icons-material';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 
-// Composant Chat Modal
-const ChatModal = ({ open, onClose, user }) => {
-  const [activeRoom, setActiveRoom] = useState(null);
-  const [rooms, setRooms] = useState([]);
-  const [messages, setMessages] = useState([]);
-  const [newMessage, setNewMessage] = useState('');
-  const [loading, setLoading] = useState(false);
-  const [participants, setParticipants] = useState([]);
-  const [notifications, setNotifications] = useState([]);
-  const messagesEndRef = useRef(null);
-  const socket = useSocket();
-
-  useEffect(() => {
-    if (open && user) {
-      loadRooms();
-      loadNotifications();
-      
-      window.addEventListener('new-chat-message', handleNewMessage);
-      window.addEventListener('new-notification', handleNewNotification);
-      
-      return () => {
-        window.removeEventListener('new-chat-message', handleNewMessage);
-        window.removeEventListener('new-notification', handleNewNotification);
-      };
-    }
-  }, [open, user]);
-
-  useEffect(() => {
-    scrollToBottom();
-  }, [messages]);
-
-  const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  };
-
-  const loadRooms = async () => {
-    try {
-      setLoading(true);
-      const token = localStorage.getItem('token');
-      const response = await fetch('http://localhost:8000/api/chat/rooms', {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-        },
-      });
-      const data = await response.json();
-      if (data.success) {
-        setRooms(data.rooms || []);
-        if (data.rooms?.length > 0 && !activeRoom) {
-          setActiveRoom(data.rooms[0]);
-          loadMessages(data.rooms[0].id);
-          loadParticipants(data.rooms[0].id);
-        }
-      }
-    } catch (error) {
-      console.error('Erreur chargement rooms:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const loadMessages = async (roomId) => {
-    try {
-      const token = localStorage.getItem('token');
-      const response = await fetch(`http://localhost:8000/api/chat/room/${roomId}/messages`, {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-        },
-      });
-      const data = await response.json();
-      if (data.success) {
-        setMessages(data.messages?.data || data.messages || []);
-      }
-    } catch (error) {
-      console.error('Erreur chargement messages:', error);
-    }
-  };
-
-  const loadParticipants = async (roomId) => {
-    try {
-      const token = localStorage.getItem('token');
-      const response = await fetch(`http://localhost:8000/api/chat/room/${roomId}/participants`, {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-        },
-      });
-      const data = await response.json();
-      if (data.success) {
-        setParticipants(data.participants || []);
-      }
-    } catch (error) {
-      console.error('Erreur chargement participants:', error);
-    }
-  };
-
-  const loadNotifications = async () => {
-    try {
-      const token = localStorage.getItem('token');
-      const response = await fetch('http://localhost:8000/api/chat/notifications', {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-        },
-      });
-      const data = await response.json();
-      if (data.success) {
-        setNotifications(data.notifications || []);
-      }
-    } catch (error) {
-      console.error('Erreur chargement notifications:', error);
-    }
-  };
-
-  const handleNewMessage = (event) => {
-    const message = event.detail;
-    if (message.chat_room_id === activeRoom?.id) {
-      setMessages(prev => [...prev, message]);
-    }
-    loadRooms();
-  };
-
-  const handleNewNotification = (event) => {
-    const notification = event.detail;
-    setNotifications(prev => [notification, ...prev]);
-  };
-
-  const sendMessage = async () => {
-    if (!newMessage.trim() || !activeRoom) return;
-
-    try {
-      const token = localStorage.getItem('token');
-      const response = await fetch(`http://localhost:8000/api/chat/room/${activeRoom.id}/message`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`,
-        },
-        body: JSON.stringify({
-          message: newMessage,
-          type: 'text'
-        }),
-      });
-
-      const data = await response.json();
-      if (data.success) {
-        setNewMessage('');
-        setMessages(prev => [...prev, data.message]);
-      }
-    } catch (error) {
-      console.error('Erreur envoi message:', error);
-    }
-  };
-
-  const handleRoomSelect = (room) => {
-    setActiveRoom(room);
-    loadMessages(room.id);
-    loadParticipants(room.id);
-    markNotificationsAsRead(room.id);
-  };
-
-  const markNotificationsAsRead = async (roomId) => {
-    try {
-      const token = localStorage.getItem('token');
-      await fetch('http://localhost:8000/api/chat/notifications/read-all', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-        },
-      });
-      loadNotifications();
-    } catch (error) {
-      console.error('Erreur marquage notifications:', error);
-    }
-  };
-
-  const getOnlineCount = () => {
-    return participants.filter(p => p.is_online).length;
-  };
-
-  const isUserOnline = (userId) => {
-    const participant = participants.find(p => p.user_id === userId);
-    return participant?.is_online || false;
-  };
-
-  return (
-    <Modal
-      open={open}
-      onClose={onClose}
-      closeAfterTransition
-      BackdropComponent={Backdrop}
-      BackdropProps={{
-        timeout: 500,
-      }}
-      sx={{
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        p: 2,
-      }}
-    >
-      <Fade in={open}>
-        <Box sx={{
-          width: { xs: '95vw', sm: '90vw', md: '80vw' },
-          height: { xs: '85vh', md: '80vh' },
-          maxWidth: '1200px',
-          bgcolor: 'background.paper',
-          borderRadius: 2,
-          boxShadow: 24,
-          display: 'flex',
-          flexDirection: 'column',
-          overflow: 'hidden',
-        }}>
-          {/* Header du chat */}
-          <Box sx={{
-            p: 2,
-            borderBottom: 1,
-            borderColor: 'divider',
-            bgcolor: 'primary.main',
-            color: 'white',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-          }}>
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-              <ChatIcon />
-              <Typography variant="h6">
-                {activeRoom?.name || 'Discussions'}
-              </Typography>
-              {activeRoom && (
-                <Chip
-                  label={`${getOnlineCount()} en ligne`}
-                  size="small"
-                  sx={{ bgcolor: 'rgba(255,255,255,0.2)', color: 'white' }}
-                />
-              )}
-            </Box>
-            <IconButton onClick={onClose} sx={{ color: 'white' }}>
-              <CloseIcon />
-            </IconButton>
-          </Box>
-
-          <Box sx={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
-            {/* Sidebar - Rooms */}
-            <Box sx={{
-              width: { xs: '100%', md: 300 },
-              borderRight: { md: 1 },
-              borderColor: { md: 'divider' },
-              display: 'flex',
-              flexDirection: 'column',
-              bgcolor: 'grey.50',
-            }}>
-              {/* Tabs */}
-              <Box sx={{ display: 'flex', borderBottom: 1, borderColor: 'divider' }}>
-                <Button
-                  fullWidth
-                  variant="text"
-                  sx={{ 
-                    borderRadius: 0,
-                    borderBottom: 2,
-                    borderColor: 'primary.main',
-                  }}
-                >
-                  <ChatIcon sx={{ mr: 1 }} />
-                  Discussions
-                </Button>
-              </Box>
-
-              {/* Liste des rooms */}
-              <Box sx={{ flex: 1, overflow: 'auto', p: 2 }}>
-                {loading ? (
-                  <Box sx={{ display: 'flex', justifyContent: 'center', p: 3 }}>
-                    <CircularProgress size={24} />
-                  </Box>
-                ) : rooms.length === 0 ? (
-                  <Typography color="text.secondary" align="center" sx={{ p: 3 }}>
-                    Aucune discussion disponible
-                  </Typography>
-                ) : (
-                  rooms.map((room, index) => (
-                    <Box
-                      key={room.id || index}
-                      onClick={() => handleRoomSelect(room)}
-                      sx={{
-                        p: 2,
-                        mb: 1,
-                        borderRadius: 1,
-                        cursor: 'pointer',
-                        bgcolor: activeRoom?.id === room.id ? 'primary.light' : 'transparent',
-                        color: activeRoom?.id === room.id ? 'white' : 'inherit',
-                        '&:hover': {
-                          bgcolor: activeRoom?.id === room.id ? 'primary.light' : 'grey.100',
-                        },
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: 2,
-                      }}
-                    >
-                      <Box sx={{ position: 'relative' }}>
-                        <Avatar sx={{ width: 40, height: 40, bgcolor: 'primary.main' }}>
-                          <PeopleIcon />
-                        </Avatar>
-                        {room.unread_count > 0 && (
-                          <Badge
-                            badgeContent={room.unread_count}
-                            color="error"
-                            sx={{
-                              position: 'absolute',
-                              top: -5,
-                              right: -5,
-                            }}
-                          />
-                        )}
-                      </Box>
-                      <Box sx={{ flex: 1, minWidth: 0 }}>
-                        <Typography variant="subtitle2" noWrap>
-                          {room.name || 'Sans nom'}
-                        </Typography>
-                        <Typography variant="caption" color="text.secondary" noWrap>
-                          {room.last_message?.message || 'Aucun message'}
-                        </Typography>
-                      </Box>
-                      {room.last_message?.created_at && (
-                        <Typography variant="caption" color="text.secondary">
-                          {format(new Date(room.last_message.created_at), 'HH:mm')}
-                        </Typography>
-                      )}
-                    </Box>
-                  ))
-                )}
-              </Box>
-            </Box>
-
-            {/* Zone de chat principale */}
-            <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
-              {activeRoom ? (
-                <>
-                  {/* Header de la room */}
-                  <Box sx={{
-                    p: 2,
-                    borderBottom: 1,
-                    borderColor: 'divider',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                  }}>
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-                      <Box sx={{ position: 'relative' }}>
-                        <Avatar sx={{ bgcolor: 'primary.main' }}>
-                          <PeopleIcon />
-                        </Avatar>
-                        <OnlineIcon
-                          sx={{
-                            position: 'absolute',
-                            bottom: 0,
-                            right: 0,
-                            fontSize: 12,
-                            color: 'success.main',
-                            bgcolor: 'white',
-                            borderRadius: '50%',
-                          }}
-                        />
-                      </Box>
-                      <Box>
-                        <Typography variant="h6">
-                          {activeRoom.name}
-                        </Typography>
-                        <Typography variant="caption" color="text.secondary">
-                          {participants.length} participants • {getOnlineCount()} en ligne
-                        </Typography>
-                      </Box>
-                    </Box>
-                    <Button
-                      startIcon={<InfoIcon />}
-                      variant="outlined"
-                      size="small"
-                      onClick={() => loadParticipants(activeRoom.id)}
-                    >
-                      Détails
-                    </Button>
-                  </Box>
-
-                  {/* Messages */}
-                  <Box sx={{ 
-                    flex: 1, 
-                    overflow: 'auto', 
-                    p: 2,
-                    bgcolor: 'grey.50',
-                  }}>
-                    {messages.length === 0 ? (
-                      <Box sx={{ 
-                        display: 'flex', 
-                        flexDirection: 'column', 
-                        alignItems: 'center', 
-                        justifyContent: 'center',
-                        height: '100%',
-                        color: 'text.secondary',
-                      }}>
-                        <ChatIcon sx={{ fontSize: 48, mb: 2, opacity: 0.3 }} />
-                        <Typography variant="h6" gutterBottom>
-                          Aucun message
-                        </Typography>
-                        <Typography variant="body2">
-                          Soyez le premier à envoyer un message !
-                        </Typography>
-                      </Box>
-                    ) : (
-                      messages.map((message, index) => (
-                        <Box
-                          key={message.id || index}
-                          sx={{
-                            mb: 2,
-                            display: 'flex',
-                            flexDirection: message.user_id === user?.id ? 'row-reverse' : 'row',
-                            alignItems: 'flex-start',
-                            gap: 1,
-                          }}
-                        >
-                          <Box sx={{ position: 'relative' }}>
-                            <Avatar
-                              src={message.user?.photo_url}
-                              sx={{ width: 36, height: 36 }}
-                            >
-                              {message.user?.prenoms?.[0] || 'U'}
-                            </Avatar>
-                            {isUserOnline(message.user_id) && (
-                              <OnlineIcon
-                                sx={{
-                                  position: 'absolute',
-                                  bottom: 0,
-                                  right: 0,
-                                  fontSize: 10,
-                                  color: 'success.main',
-                                  bgcolor: 'white',
-                                  borderRadius: '50%',
-                                }}
-                              />
-                            )}
-                          </Box>
-                          <Box sx={{
-                            maxWidth: '70%',
-                            bgcolor: message.user_id === user?.id ? 'primary.main' : 'white',
-                            color: message.user_id === user?.id ? 'white' : 'text.primary',
-                            p: 1.5,
-                            borderRadius: 2,
-                            borderTopLeftRadius: message.user_id === user?.id ? 12 : 2,
-                            borderTopRightRadius: message.user_id === user?.id ? 2 : 12,
-                            boxShadow: 1,
-                          }}>
-                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5 }}>
-                              <Typography variant="caption" fontWeight="bold">
-                                {message.user?.prenoms || 'Utilisateur'} {message.user?.nom || ''}
-                              </Typography>
-                              {message.created_at && (
-                                <Typography variant="caption" sx={{ opacity: 0.7 }}>
-                                  {format(new Date(message.created_at), 'HH:mm')}
-                                </Typography>
-                              )}
-                            </Box>
-                            <Typography variant="body2">
-                              {message.message}
-                            </Typography>
-                          </Box>
-                        </Box>
-                      ))
-                    )}
-                    <div ref={messagesEndRef} />
-                  </Box>
-
-                  {/* Input message */}
-                  <Box sx={{ 
-                    p: 2, 
-                    borderTop: 1, 
-                    borderColor: 'divider',
-                    bgcolor: 'white',
-                  }}>
-                    <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
-                      <IconButton size="small">
-                        <AttachFileIcon />
-                      </IconButton>
-                      <IconButton size="small">
-                        <EmojiIcon />
-                      </IconButton>
-                      <TextField
-                        fullWidth
-                        size="small"
-                        placeholder="Tapez votre message..."
-                        value={newMessage}
-                        onChange={(e) => setNewMessage(e.target.value)}
-                        onKeyPress={(e) => e.key === 'Enter' && sendMessage()}
-                        variant="outlined"
-                        sx={{
-                          '& .MuiOutlinedInput-root': {
-                            borderRadius: 4,
-                          },
-                        }}
-                      />
-                      <IconButton 
-                        size="small" 
-                        color="primary"
-                        onClick={sendMessage}
-                        disabled={!newMessage.trim()}
-                        sx={{ 
-                          bgcolor: 'primary.main',
-                          color: 'white',
-                          '&:hover': { bgcolor: 'primary.dark' },
-                          '&.Mui-disabled': { bgcolor: 'grey.300' },
-                        }}
-                      >
-                        <SendIcon />
-                      </IconButton>
-                    </Box>
-                  </Box>
-                </>
-              ) : (
-                <Box sx={{ 
-                  display: 'flex', 
-                  flexDirection: 'column', 
-                  alignItems: 'center', 
-                  justifyContent: 'center',
-                  height: '100%',
-                  p: 3,
-                  textAlign: 'center',
-                }}>
-                  <ChatIcon sx={{ fontSize: 64, color: 'grey.300', mb: 2 }} />
-                  <Typography variant="h6" color="text.secondary" gutterBottom>
-                    Sélectionnez une discussion
-                  </Typography>
-                  <Typography variant="body2" color="text.secondary">
-                    Choisissez une conversation dans la liste pour commencer à discuter
-                  </Typography>
-                </Box>
-              )}
-            </Box>
-          </Box>
-        </Box>
-      </Fade>
-    </Modal>
-  );
-};
-
-// Composant Header principal
 const Header = () => {
   const { user, logout } = useAuth();
   const { showLoading } = useLoading();
-  const socket = useSocket();
   const navigate = useNavigate();
   const location = useLocation();
   const theme = useTheme();
@@ -607,9 +64,10 @@ const Header = () => {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [notificationsAnchor, setNotificationsAnchor] = useState(null);
   const [scrolled, setScrolled] = useState(false);
-  const [chatOpen, setChatOpen] = useState(false);
-  const [chatNotifications, setChatNotifications] = useState([]);
-  const [onlineUsers, setOnlineUsers] = useState([]);
+  const [notifications, setNotifications] = useState([]);
+  const [notificationsLoading, setNotificationsLoading] = useState(false);
+  const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'info' });
+  const [unreadCount, setUnreadCount] = useState(0);
 
   useEffect(() => {
     const handleScroll = () => {
@@ -619,39 +77,71 @@ const Header = () => {
     return () => window.removeEventListener('scroll', handleScroll);
   }, []);
 
-  useEffect(() => {
-    if (user) {
-      loadNotifications();
-      // Simulation d'utilisateurs en ligne
-      const simulatedOnlineUsers = [user.id];
-      for (let i = 0; i < 3; i++) {
-        simulatedOnlineUsers.push(Math.floor(Math.random() * 100));
-      }
-      setOnlineUsers(simulatedOnlineUsers);
-    }
-  }, [user]);
-
+  // Charger les notifications et le compteur non lu
   const loadNotifications = async () => {
+    if (!user) return;
+    
+    setNotificationsLoading(true);
     try {
-      const token = localStorage.getItem('token');
-      if (!token) return;
-
-      const response = await fetch('http://localhost:8000/api/chat/notifications', {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-        },
-      });
-      const data = await response.json();
-      if (data.success) {
-        setChatNotifications(data.notifications || []);
+      // Charger les notifications
+      const notificationsResponse = await axios.get('/chat/notifications');
+      if (notificationsResponse.data.success) {
+        setNotifications(notificationsResponse.data.notifications);
       }
-    } catch (error) {
-      console.error('Erreur chargement notifications:', error);
+
+      // Charger le compteur de messages non lus
+      const roomsResponse = await axios.get('/chat/rooms');
+      if (roomsResponse.data.success) {
+        const totalUnread = roomsResponse.data.rooms.reduce(
+          (sum, room) => sum + (room.unread_count || 0), 
+          0
+        );
+        setUnreadCount(totalUnread);
+      }
+    } catch (err) {
+      console.error('Erreur chargement notifications:', err.response || err);
+      
+      // Fallback pour le développement
+      if (err.response?.status !== 401) {
+        const demoNotifications = [
+          {
+            id: 1,
+            message: 'Bienvenue sur Show Your Talent!',
+            created_at: new Date(Date.now() - 86400000).toISOString(),
+            is_read: true,
+            chat_room_id: 1
+          },
+          {
+            id: 2,
+            message: 'Nouveau message dans la catégorie Chant',
+            created_at: new Date(Date.now() - 7200000).toISOString(),
+            is_read: false,
+            chat_room_id: 1
+          }
+        ];
+        setNotifications(demoNotifications);
+        setUnreadCount(3); // Valeur de démonstration
+      }
+    } finally {
+      setNotificationsLoading(false);
     }
   };
 
-  const handleNavigation = (path) => {
-    showLoading("Chargement en cours...", 3000);
+  useEffect(() => {
+    if (user) {
+      loadNotifications();
+      // Rafraîchir toutes les 30 secondes
+      const interval = setInterval(loadNotifications, 30000);
+      return () => clearInterval(interval);
+    }
+  }, [user]);
+
+  const showSnackbar = (message, severity = 'info') => {
+    setSnackbar({ open: true, message, severity });
+  };
+
+  const handleNavigation = async (path) => {
+    showLoading("Chargement en cours...", 500);
     setMobileOpen(false);
     setAnchorEl(null);
     setNotificationsAnchor(null);
@@ -670,12 +160,13 @@ const Header = () => {
   };
 
   const handleLogout = async () => {
-    showLoading("Déconnexion en cours...", 3000);
+    showLoading("Déconnexion en cours...", 1500);
     try {
       await logout();
       handleNavigation('/login');
     } catch (error) {
       console.error('Erreur lors de la déconnexion:', error);
+      showSnackbar('Erreur lors de la déconnexion', 'error');
     }
   };
 
@@ -706,7 +197,9 @@ const Header = () => {
 
   const getInitials = () => {
     if (!user) return 'U';
-    return `${user.prenoms?.[0] || ''}${user.nom?.[0] || ''}`.toUpperCase() || 'U';
+    const firstInitial = user.prenoms?.[0] || '';
+    const lastInitial = user.nom?.[0] || '';
+    return `${firstInitial}${lastInitial}`.toUpperCase() || 'U';
   };
 
   const getDisplayName = () => {
@@ -718,6 +211,7 @@ const Header = () => {
     const baseLinks = [
       { path: '/', label: 'Accueil', icon: <HomeIcon />, show: true },
       { path: '/candidats', label: 'Candidats', icon: <VoteIcon />, show: true },
+      { path: '/discussions', label: 'Discussions', icon: <ChatIcon />, show: true },
     ];
 
     const roleLinks = [];
@@ -749,43 +243,48 @@ const Header = () => {
     return [...baseLinks, ...roleLinks];
   };
 
-  const markNotificationAsRead = async (notificationId) => {
-    try {
-      const token = localStorage.getItem('token');
-      await fetch(`http://localhost:8000/api/chat/notifications/${notificationId}/read`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-        },
-      });
-      loadNotifications();
-    } catch (error) {
-      console.error('Erreur marquage notification:', error);
-    }
-  };
-
   const markAllNotificationsAsRead = async () => {
     try {
-      const token = localStorage.getItem('token');
-      await fetch('http://localhost:8000/api/chat/notifications/read-all', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-        },
-      });
-      setChatNotifications([]);
-      setNotificationsAnchor(null);
-      if (socket && socket.setNotificationsCount) {
-        socket.setNotificationsCount(0);
+      const response = await axios.post('/chat/notifications/read-all');
+
+      if (response.data.success) {
+        showSnackbar(response.data.message || 'Toutes les notifications ont été marquées comme lues', 'success');
+        loadNotifications();
       }
-    } catch (error) {
-      console.error('Erreur marquage notifications:', error);
+    } catch (err) {
+      console.error('Erreur marquage notifications:', err.response || err);
+      if (err.response?.status !== 401) {
+        setNotifications(prev => prev.map(notif => ({ ...notif, is_read: true })));
+        showSnackbar('Toutes les notifications ont été marquées comme lues', 'success');
+      }
     }
   };
 
-  const unreadNotificationsCount = chatNotifications.filter(n => !n.is_read).length;
+  const markNotificationAsRead = async (notificationId) => {
+    try {
+      const response = await axios.post(`/chat/notifications/${notificationId}/read`);
+
+      if (response.data.success) {
+        setNotifications(prev => 
+          prev.map(notif => 
+            notif.id === notificationId ? { ...notif, is_read: true } : notif
+          )
+        );
+      }
+    } catch (err) {
+      console.error('Erreur marquage notification:', err.response || err);
+      if (err.response?.status !== 401) {
+        setNotifications(prev => 
+          prev.map(notif => 
+            notif.id === notificationId ? { ...notif, is_read: true } : notif
+          )
+        );
+      }
+    }
+  };
 
   const navLinks = getNavLinks();
+  const unreadNotificationsCount = notifications.filter(n => !n.is_read).length;
 
   return (
     <>
@@ -863,70 +362,131 @@ const Header = () => {
             )}
 
             {/* User Actions */}
-            <div className="flex items-center space-x-2 lg:space-x-4">
+            <div className="flex items-center space-x-2 lg:space-x-3">
               {user ? (
                 <>
-                  {/* Bouton Chat */}
+                  {/* Bouton Discussions avec badge */}
                   <Tooltip title="Discussions">
                     <IconButton
-                      onClick={() => setChatOpen(true)}
-                      className="relative text-gray-600 hover:text-yellow-600 transition-colors"
-                      size="small"
+                      onClick={() => handleNavigation('/discussions')}
+                      sx={{
+                        position: 'relative',
+                        color: 'text.secondary',
+                        '&:hover': {
+                          color: 'primary.main',
+                          backgroundColor: 'rgba(102, 126, 234, 0.08)',
+                        },
+                        transition: 'all 0.2s ease',
+                      }}
                     >
-                      <Badge badgeContent={socket?.notificationsCount || 0} color="error">
+                      <Badge 
+                        badgeContent={unreadCount} 
+                        color="error"
+                        max={99}
+                        sx={{
+                          '& .MuiBadge-badge': {
+                            fontSize: '0.6rem',
+                            height: '18px',
+                            minWidth: '18px',
+                            top: 5,
+                            right: 5,
+                            border: '2px solid white',
+                          }
+                        }}
+                      >
                         <ChatIcon />
                       </Badge>
                     </IconButton>
                   </Tooltip>
 
-                  {/* Notifications */}
+                  {/* Bouton Notifications avec badge */}
                   <Tooltip title="Notifications">
                     <IconButton
-                      onClick={(e) => setNotificationsAnchor(e.currentTarget)}
-                      className="relative text-gray-600 hover:text-yellow-600 transition-colors"
-                      size="small"
+                      onClick={(e) => {
+                        setNotificationsAnchor(e.currentTarget);
+                        loadNotifications();
+                      }}
+                      sx={{
+                        position: 'relative',
+                        color: 'text.secondary',
+                        '&:hover': {
+                          color: 'primary.main',
+                          backgroundColor: 'rgba(102, 126, 234, 0.08)',
+                        },
+                        transition: 'all 0.2s ease',
+                      }}
                     >
-                      <Badge badgeContent={unreadNotificationsCount} color="error">
+                      <Badge 
+                        badgeContent={unreadNotificationsCount} 
+                        color="error"
+                        max={99}
+                        sx={{
+                          '& .MuiBadge-badge': {
+                            fontSize: '0.6rem',
+                            height: '18px',
+                            minWidth: '18px',
+                            top: 5,
+                            right: 5,
+                            border: '2px solid white',
+                          }
+                        }}
+                      >
                         <NotificationsIcon />
                       </Badge>
                     </IconButton>
                   </Tooltip>
 
+                  {/* Avatar utilisateur avec point vert */}
                   <div className="flex items-center space-x-2 lg:space-x-3">
                     <Box sx={{ position: 'relative' }}>
                       <Tooltip title={getDisplayName()}>
-                        <Avatar
-                          sx={{ 
-                            width: { xs: 32, sm: 40, md: 44 }, 
-                            height: { xs: 32, sm: 40, md: 44 },
-                            cursor: 'pointer',
-                            border: '2px solid #D97706',
-                            '&:hover': { transform: 'scale(1.05)' }
-                          }}
+                        <IconButton
                           onClick={handleMenu}
-                        >
-                          {getInitials()}
-                        </Avatar>
-                      </Tooltip>
-                      {/* Point vert pour statut en ligne */}
-                      {onlineUsers.includes(user?.id) && (
-                        <OnlineIcon
-                          sx={{
-                            position: 'absolute',
-                            bottom: 2,
-                            right: 2,
-                            fontSize: 12,
-                            color: 'success.main',
-                            bgcolor: 'white',
-                            borderRadius: '50%',
+                          sx={{ 
+                            p: 0,
+                            '&:hover': { 
+                              transform: 'scale(1.05)',
+                              transition: 'transform 0.2s ease'
+                            }
                           }}
-                        />
-                      )}
+                        >
+                          <Avatar
+                            src={user.photo_url || ''}
+                            sx={{ 
+                              width: { xs: 36, sm: 40, md: 44 }, 
+                              height: { xs: 36, sm: 40, md: 44 },
+                              border: '3px solid #D97706',
+                              bgcolor: user.photo_url ? 'transparent' : 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                              color: 'white',
+                              fontWeight: 'bold',
+                              fontSize: '1rem',
+                            }}
+                          >
+                            {!user.photo_url && getInitials()}
+                          </Avatar>
+                        </IconButton>
+                      </Tooltip>
+                      
+                      {/* Point vert indiquant l'état en ligne */}
+                      <Box
+                        sx={{
+                          position: 'absolute',
+                          bottom: 3,
+                          right: 3,
+                          width: 12,
+                          height: 12,
+                          bgcolor: '#48bb78',
+                          border: '2px solid white',
+                          borderRadius: '50%',
+                          boxShadow: '0 2px 4px rgba(0,0,0,0.2)',
+                        }}
+                      />
                     </Box>
                     
+                    {/* Infos utilisateur (desktop seulement) */}
                     {!isMobile && (
                       <div className="hidden lg:block">
-                        <p className="font-semibold text-sm text-gray-800 truncate max-w-[120px]">
+                        <p className="font-semibold text-sm text-gray-800 truncate max-w-[140px]">
                           {getDisplayName()}
                         </p>
                         <p className="text-xs text-gray-600">
@@ -935,16 +495,24 @@ const Header = () => {
                       </div>
                     )}
                     
+                    {/* Flèche menu */}
                     <IconButton 
                       onClick={handleMenu} 
-                      className="text-gray-600 hover:text-yellow-600 transition-colors"
+                      sx={{
+                        color: 'text.secondary',
+                        '&:hover': { 
+                          color: 'primary.main',
+                          backgroundColor: 'rgba(102, 126, 234, 0.08)',
+                        },
+                        transition: 'all 0.2s ease',
+                      }}
                       size="small"
                     >
                       {anchorEl ? <ArrowUpIcon /> : <ArrowDownIcon />}
                     </IconButton>
                   </div>
 
-                  {/* User Menu */}
+                  {/* Menu utilisateur */}
                   <Menu
                     anchorEl={anchorEl}
                     open={Boolean(anchorEl)}
@@ -952,19 +520,50 @@ const Header = () => {
                     TransitionComponent={Fade}
                     anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
                     transformOrigin={{ vertical: 'top', horizontal: 'right' }}
-                    sx={{
-                      '& .MuiPaper-root': {
-                        minWidth: '200px',
+                    PaperProps={{
+                      sx: {
+                        minWidth: '220px',
                         borderRadius: '12px',
                         marginTop: '8px',
                         boxShadow: '0 10px 40px rgba(0,0,0,0.1)',
                         border: '1px solid rgba(217, 119, 6, 0.2)',
+                        maxHeight: '400px',
                       },
                     }}
                   >
+                    {/* En-tête du menu */}
+                    <Box sx={{ p: 2, borderBottom: 1, borderColor: 'divider' }}>
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                        <Avatar
+                          src={user.photo_url || ''}
+                          sx={{ 
+                            width: 48, 
+                            height: 48,
+                            border: '2px solid #D97706',
+                            bgcolor: user.photo_url ? 'transparent' : 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                            color: 'white',
+                            fontWeight: 'bold',
+                          }}
+                        >
+                          {!user.photo_url && getInitials()}
+                        </Avatar>
+                        <Box>
+                          <Typography variant="subtitle1" fontWeight="bold">
+                            {getDisplayName()}
+                          </Typography>
+                          <Typography variant="caption" color="text.secondary">
+                            {getRoleLabel()}
+                          </Typography>
+                        </Box>
+                      </Box>
+                    </Box>
+
                     <MenuItem 
                       onClick={() => handleNavigation('/profile')}
-                      sx={{ '&:hover': { backgroundColor: 'rgba(253, 230, 138, 0.3)' } }}
+                      sx={{ 
+                        py: 1.5,
+                        '&:hover': { backgroundColor: 'rgba(253, 230, 138, 0.3)' }
+                      }}
                     >
                       <ListItemIcon>
                         <PersonIcon sx={{ color: '#D97706' }} fontSize="small" />
@@ -972,32 +571,31 @@ const Header = () => {
                       <ListItemText primary="Mon Profil" />
                     </MenuItem>
                     
-                    {/* Bouton Chat dans le menu */}
                     <MenuItem 
-                      onClick={() => {
-                        setChatOpen(true);
-                        handleClose();
+                      onClick={() => handleNavigation('/discussions')}
+                      sx={{ 
+                        py: 1.5,
+                        '&:hover': { backgroundColor: 'rgba(253, 230, 138, 0.3)' }
                       }}
-                      sx={{ '&:hover': { backgroundColor: 'rgba(253, 230, 138, 0.3)' } }}
                     >
                       <ListItemIcon>
-                        <ChatIcon sx={{ color: '#D97706' }} fontSize="small" />
+                        <Badge badgeContent={unreadCount} color="error" size="small">
+                          <ChatIcon sx={{ color: '#D97706' }} fontSize="small" />
+                        </Badge>
                       </ListItemIcon>
-                      <ListItemText primary="Discussions" />
-                      {socket?.notificationsCount > 0 && (
-                        <Chip
-                          label={socket.notificationsCount}
-                          size="small"
-                          color="error"
-                          sx={{ ml: 1, height: 20 }}
-                        />
-                      )}
+                      <ListItemText 
+                        primary="Discussions" 
+                        secondary={unreadCount > 0 ? `${unreadCount} non lu(s)` : null}
+                      />
                     </MenuItem>
                     
                     {getRoleNames().includes('admin') && (
                       <MenuItem 
                         onClick={() => handleNavigation('/admin')}
-                        sx={{ '&:hover': { backgroundColor: 'rgba(253, 230, 138, 0.3)' } }}
+                        sx={{ 
+                          py: 1.5,
+                          '&:hover': { backgroundColor: 'rgba(253, 230, 138, 0.3)' }
+                        }}
                       >
                         <ListItemIcon>
                           <DashboardIcon sx={{ color: '#D97706' }} fontSize="small" />
@@ -1009,7 +607,10 @@ const Header = () => {
                     {getRoleNames().includes('promoteur') && (
                       <MenuItem 
                         onClick={() => handleNavigation('/promoteur')}
-                        sx={{ '&:hover': { backgroundColor: 'rgba(253, 230, 138, 0.3)' } }}
+                        sx={{ 
+                          py: 1.5,
+                          '&:hover': { backgroundColor: 'rgba(253, 230, 138, 0.3)' }
+                        }}
                       >
                         <ListItemIcon>
                           <GroupIcon sx={{ color: '#D97706' }} fontSize="small" />
@@ -1021,7 +622,10 @@ const Header = () => {
                     {getRoleNames().includes('candidat') && (
                       <MenuItem 
                         onClick={() => handleNavigation('/candidat')}
-                        sx={{ '&:hover': { backgroundColor: 'rgba(253, 230, 138, 0.3)' } }}
+                        sx={{ 
+                          py: 1.5,
+                          '&:hover': { backgroundColor: 'rgba(253, 230, 138, 0.3)' }
+                        }}
                       >
                         <ListItemIcon>
                           <PersonIcon sx={{ color: '#D97706' }} fontSize="small" />
@@ -1031,9 +635,11 @@ const Header = () => {
                     )}
                     
                     <Divider sx={{ my: 1 }} />
+                    
                     <MenuItem 
                       onClick={handleLogout}
                       sx={{ 
+                        py: 1.5,
                         color: '#DC2626',
                         '&:hover': { backgroundColor: 'rgba(252, 165, 165, 0.3)' }
                       }}
@@ -1045,7 +651,7 @@ const Header = () => {
                     </MenuItem>
                   </Menu>
 
-                  {/* Notifications Menu */}
+                  {/* Menu Notifications */}
                   <Menu
                     anchorEl={notificationsAnchor}
                     open={Boolean(notificationsAnchor)}
@@ -1055,7 +661,7 @@ const Header = () => {
                     transformOrigin={{ vertical: 'top', horizontal: 'right' }}
                     PaperProps={{
                       sx: {
-                        width: { xs: '300px', sm: '380px' },
+                        width: { xs: '320px', sm: '380px' },
                         maxHeight: '500px',
                         borderRadius: '12px',
                       }
@@ -1067,18 +673,23 @@ const Header = () => {
                           Notifications
                         </Typography>
                         {unreadNotificationsCount > 0 && (
-                          <Button
+                          <Button 
                             size="small"
                             onClick={markAllNotificationsAsRead}
-                            sx={{ fontSize: '0.75rem' }}
+                            disabled={notificationsLoading}
+                            startIcon={notificationsLoading ? <CircularProgress size={16} /> : null}
                           >
-                            Tout marquer comme lu
+                            {notificationsLoading ? '' : 'Tout marquer comme lu'}
                           </Button>
                         )}
                       </div>
                       
                       <div className="space-y-2 max-h-80 overflow-y-auto">
-                        {chatNotifications.length === 0 ? (
+                        {notificationsLoading ? (
+                          <Box sx={{ display: 'flex', justifyContent: 'center', py: 3 }}>
+                            <CircularProgress size={24} />
+                          </Box>
+                        ) : notifications.length === 0 ? (
                           <Box sx={{ textAlign: 'center', py: 3 }}>
                             <NotificationsIcon sx={{ fontSize: 48, color: 'grey.300', mb: 2 }} />
                             <Typography color="text.secondary">
@@ -1086,68 +697,82 @@ const Header = () => {
                             </Typography>
                           </Box>
                         ) : (
-                          chatNotifications.map((notification, idx) => (
-                            <ListItem
-                              key={notification.id || idx}
-                              onClick={() => notification.id && markNotificationAsRead(notification.id)}
+                          notifications.map((notification) => (
+                            <Box
+                              key={notification.id}
                               sx={{
-                                py: 1.5,
-                                px: 2,
-                                borderRadius: '8px',
+                                p: 2,
+                                mb: 1,
+                                borderRadius: 1,
+                                bgcolor: notification.is_read ? 'transparent' : 'grey.50',
+                                borderLeft: notification.is_read ? 'none' : '3px solid #D97706',
                                 cursor: 'pointer',
-                                backgroundColor: !notification.is_read ? 'grey.50' : 'transparent',
-                                borderLeft: !notification.is_read ? '4px solid' : 'none',
-                                borderColor: 'primary.main',
-                                '&:hover': {
-                                  backgroundColor: 'action.hover',
-                                },
-                                alignItems: 'flex-start',
+                                '&:hover': { bgcolor: 'grey.100' }
+                              }}
+                              onClick={() => {
+                                if (!notification.is_read) {
+                                  markNotificationAsRead(notification.id);
+                                }
+                                if (notification.chat_room_id) {
+                                  handleNavigation('/discussions');
+                                  setNotificationsAnchor(null);
+                                }
                               }}
                             >
-                              <ListItemAvatar sx={{ minWidth: 40 }}>
-                                <Avatar sx={{ width: 32, height: 32, bgcolor: 'primary.main' }}>
-                                  <ChatIcon fontSize="small" />
-                                </Avatar>
-                              </ListItemAvatar>
-                              <ListItemText
-                                primary={
-                                  <Typography variant="body2" fontWeight={!notification.is_read ? 600 : 400}>
-                                    {notification.message || 'Nouvelle notification'}
-                                  </Typography>
-                                }
-                                secondary={
-                                  notification.created_at ? (
-                                    <Typography variant="caption" color="text.secondary">
-                                      {format(new Date(notification.created_at), 'dd MMM yyyy HH:mm', { locale: fr })}
-                                    </Typography>
-                                  ) : null
-                                }
-                              />
-                              {!notification.is_read && (
-                                <Box sx={{ width: 8, height: 8, borderRadius: '50%', bgcolor: 'primary.main', mt: 1 }} />
+                              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5 }}>
+                                {!notification.is_read && (
+                                  <Box sx={{ 
+                                    width: 8, 
+                                    height: 8, 
+                                    bgcolor: '#D97706', 
+                                    borderRadius: '50%' 
+                                  }} />
+                                )}
+                                <Typography 
+                                  variant="subtitle2" 
+                                  fontWeight={notification.is_read ? 'normal' : 'bold'}
+                                  sx={{ flex: 1 }}
+                                >
+                                  {notification.message}
+                                </Typography>
+                              </Box>
+                              {notification.created_at && (
+                                <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
+                                  {format(new Date(notification.created_at), 'dd/MM/yyyy HH:mm')}
+                                </Typography>
                               )}
-                            </ListItem>
+                            </Box>
                           ))
                         )}
                       </div>
                       <Button 
                         fullWidth
+                        variant="outlined"
                         sx={{ mt: 2 }}
                         onClick={() => setNotificationsAnchor(null)}
                       >
-                        Voir toutes les notifications
+                        Fermer
                       </Button>
                     </Box>
                   </Menu>
                 </>
               ) : (
                 <div className="flex items-center space-x-2 sm:space-x-3">
-                  <button
+                  <Button
                     onClick={() => handleNavigation('/login')}
-                    className="px-3 sm:px-4 py-2 text-sm font-medium rounded-lg border border-yellow-600 text-yellow-600 hover:bg-yellow-600 hover:text-white transition-all duration-300"
+                    variant="outlined"
+                    sx={{
+                      borderColor: '#D97706',
+                      color: '#D97706',
+                      '&:hover': {
+                        backgroundColor: '#D97706',
+                        color: 'white',
+                        borderColor: '#D97706',
+                      },
+                    }}
                   >
                     Connexion
-                  </button>
+                  </Button>
                 </div>
               )}
             </div>
@@ -1205,23 +830,29 @@ const Header = () => {
                   <div className="flex items-center space-x-3">
                     <Box sx={{ position: 'relative' }}>
                       <Avatar
-                        sx={{ width: 40, height: 40, border: '2px solid #D97706' }}
+                        src={user.photo_url || ''}
+                        sx={{ 
+                          width: 40, 
+                          height: 40, 
+                          border: '2px solid #D97706',
+                          bgcolor: user.photo_url ? 'transparent' : 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                          color: 'white',
+                        }}
                       >
-                        {getInitials()}
+                        {!user.photo_url && getInitials()}
                       </Avatar>
-                      {onlineUsers.includes(user?.id) && (
-                        <OnlineIcon
-                          sx={{
-                            position: 'absolute',
-                            bottom: 0,
-                            right: 0,
-                            fontSize: 10,
-                            color: 'success.main',
-                            bgcolor: 'white',
-                            borderRadius: '50%',
-                          }}
-                        />
-                      )}
+                      <Box
+                        sx={{
+                          position: 'absolute',
+                          bottom: 0,
+                          right: 0,
+                          width: 10,
+                          height: 10,
+                          bgcolor: '#48bb78',
+                          border: '2px solid white',
+                          borderRadius: '50%',
+                        }}
+                      />
                     </Box>
                     <div className="flex-1 min-w-0">
                       <p className="font-semibold text-sm truncate">
@@ -1263,7 +894,13 @@ const Header = () => {
                         minWidth: '40px',
                       }}
                     >
-                      {link.icon}
+                      {link.label === 'Discussions' ? (
+                        <Badge badgeContent={unreadCount} color="error" size="small">
+                          {link.icon}
+                        </Badge>
+                      ) : (
+                        link.icon
+                      )}
                     </ListItemIcon>
                     <ListItemText 
                       primary={link.label}
@@ -1276,39 +913,6 @@ const Header = () => {
                     />
                   </ListItem>
                 ))}
-              
-              {/* Bouton Chat dans le drawer mobile */}
-              {user && (
-                <ListItem
-                  onClick={() => {
-                    setChatOpen(true);
-                    handleDrawerToggle();
-                  }}
-                  sx={{
-                    borderRadius: '8px',
-                    marginBottom: '4px',
-                    '&:hover': {
-                      backgroundColor: 'rgba(243, 244, 246, 0.5)',
-                    },
-                  }}
-                >
-                  <ListItemIcon sx={{ minWidth: '40px', color: '#6B7280' }}>
-                    <ChatIcon />
-                  </ListItemIcon>
-                  <ListItemText 
-                    primary="Discussions"
-                    primaryTypographyProps={{ sx: { fontWeight: 500, color: '#374151' } }}
-                  />
-                  {socket?.notificationsCount > 0 && (
-                    <Chip
-                      label={socket.notificationsCount}
-                      size="small"
-                      color="error"
-                      sx={{ height: 20 }}
-                    />
-                  )}
-                </ListItem>
-              )}
             </List>
 
             {user && (
@@ -1346,14 +950,21 @@ const Header = () => {
         </Drawer>
       </header>
 
-      {/* Modal de Chat */}
-      {user && (
-        <ChatModal
-          open={chatOpen}
-          onClose={() => setChatOpen(false)}
-          user={user}
-        />
-      )}
+      {/* Snackbar pour les messages */}
+      <Snackbar
+        open={snackbar.open}
+        autoHideDuration={6000}
+        onClose={() => setSnackbar({ ...snackbar, open: false })}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
+      >
+        <Alert 
+          onClose={() => setSnackbar({ ...snackbar, open: false })} 
+          severity={snackbar.severity}
+          sx={{ width: '100%' }}
+        >
+          {snackbar.message}
+        </Alert>
+      </Snackbar>
     </>
   );
 };

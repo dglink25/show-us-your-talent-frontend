@@ -1,595 +1,974 @@
-// src/components/Chat/ChatModal.jsx
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   Dialog,
-  DialogTitle,
   DialogContent,
-  DialogActions,
+  AppBar,
+  Toolbar,
+  IconButton,
+  Typography,
   Box,
   TextField,
   Button,
-  IconButton,
-  Typography,
   Avatar,
   Badge,
-  CircularProgress,
-  Chip,
-  Tooltip,
-  Paper,
-  Divider,
   List,
   ListItem,
   ListItemAvatar,
   ListItemText,
+  ListItemSecondaryAction,
+  Chip,
+  CircularProgress,
+  Fade,
+  Slide,
+  Paper,
+  InputAdornment,
+  Tooltip,
   Menu,
   MenuItem,
-  Snackbar,
-  Alert,
-  useTheme,
-  useMediaQuery,
+  Divider,
+  Zoom,
 } from '@mui/material';
 import {
   Close as CloseIcon,
   Send as SendIcon,
+  Search as SearchIcon,
   People as PeopleIcon,
+  Chat as ChatIcon,
   Notifications as NotificationsIcon,
-  NotificationsOff as NotificationsOffIcon,
   MoreVert as MoreVertIcon,
-  OnlinePrediction as OnlineIcon,
-  Person as PersonIcon,
-  School as SchoolIcon,
-  VideoLibrary as VideoIcon,
-  EmojiEmotions as EmojiIcon,
   AttachFile as AttachFileIcon,
+  EmojiEmotions as EmojiEmotionsIcon,
+  Image as ImageIcon,
+  VideoLibrary as VideoIcon,
+  InsertDriveFile as FileIcon,
+  CheckCircle as CheckCircleIcon,
+  Schedule as ScheduleIcon,
+  FiberManualRecord as OnlineIcon,
+  VolumeOff as MuteIcon,
+  Pin as PinIcon,
+  Delete as DeleteIcon,
+  Block as BlockIcon,
+  Report as ReportIcon,
   ArrowBack as ArrowBackIcon,
+  Refresh as RefreshIcon,
+  Settings as SettingsIcon,
 } from '@mui/icons-material';
-import axios from '../../../api/axios';
-import { useAuth } from '../../contexts/AuthContext';
-import ChatMessage from './ChatMessage';
-import ChatNotificationBell from './ChatNotificationBell';
+import { formatDistanceToNow, format } from 'date-fns';
+import { fr } from 'date-fns/locale';
+import { motion, AnimatePresence } from 'framer-motion';
+import axios from '../../utils/axiosConfig';
+import { CHAT_PALETTE, CHAT_SETTINGS } from '../../constants/chat';
+import './ChatModal.css';
 
-const PALETTE = {
-  OR: '#D4AF37',
-  OR_LIGHT: '#FFD700',
-  OR_DARK: '#B8860B',
-  RED_DARK: '#8B0000',
-  BROWN: '#8B4513',
-  WHITE: '#FFFFFF',
-  BLACK: '#000000',
-  SUCCESS: '#4CAF50',
-  INFO: '#2196F3',
+// Composant Message Bubble
+const MessageBubble = ({ message, isOwn, currentUser }) => {
+  const [menuAnchor, setMenuAnchor] = useState(null);
+  const [isHovered, setIsHovered] = useState(false);
+
+  const handleMenuOpen = (event) => {
+    event.stopPropagation();
+    setMenuAnchor(event.currentTarget);
+  };
+
+  const handleMenuClose = () => {
+    setMenuAnchor(null);
+  };
+
+  const handleCopy = () => {
+    navigator.clipboard.writeText(message.content || message.message);
+    handleMenuClose();
+  };
+
+  const formatTime = (dateString) => {
+    try {
+      const date = new Date(dateString);
+      return format(date, 'HH:mm');
+    } catch (error) {
+      return '--:--';
+    }
+  };
+
+  const formatDate = (dateString) => {
+    try {
+      const date = new Date(dateString);
+      return format(date, 'dd MMM yyyy');
+    } catch (error) {
+      return '';
+    }
+  };
+
+  const getMessageStatus = () => {
+    if (!isOwn) return null;
+    if (message.is_read) return { icon: <CheckCircleIcon />, color: CHAT_PALETTE.success };
+    if (message.is_delivered) return { icon: <CheckCircleIcon />, color: CHAT_PALETTE.gray };
+    return { icon: <ScheduleIcon />, color: CHAT_PALETTE.gray };
+  };
+
+  const messageStatus = getMessageStatus();
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.3 }}
+      className={`chat-message-container ${isOwn ? 'own' : 'other'}`}
+      onMouseEnter={() => setIsHovered(true)}
+      onMouseLeave={() => setIsHovered(false)}
+    >
+      {!isOwn && (
+        <Tooltip title={`${message.user?.prenoms} ${message.user?.nom}`}>
+          <Avatar
+            className="message-avatar"
+            src={message.user?.photo_url}
+            sx={{ bgcolor: CHAT_PALETTE.primary }}
+          >
+            {message.user?.prenoms?.[0]}{message.user?.nom?.[0]}
+          </Avatar>
+        </Tooltip>
+      )}
+
+      <Paper
+        elevation={isHovered ? 3 : 1}
+        className={`message-bubble ${isOwn ? 'own' : 'other'}`}
+        sx={{
+          bgcolor: isOwn ? CHAT_PALETTE.gradient : 'white',
+          color: isOwn ? 'white' : CHAT_PALETTE.dark,
+        }}
+      >
+        {!isOwn && (
+          <Typography variant="caption" className="message-sender">
+            {message.user?.prenoms} {message.user?.type_compte === 'promoteur' && '👑'}
+          </Typography>
+        )}
+
+        <Typography variant="body1" className="message-content">
+          {message.content || message.message}
+        </Typography>
+
+        <Box className="message-footer">
+          <Typography variant="caption" className="message-time">
+            {formatTime(message.created_at || message.timestamp)}
+          </Typography>
+          
+          {isOwn && messageStatus && (
+            <Box className="message-status">
+              {React.cloneElement(messageStatus.icon, {
+                sx: { fontSize: '0.8rem', color: messageStatus.color }
+              })}
+            </Box>
+          )}
+        </Box>
+
+        {isHovered && (
+          <IconButton
+            size="small"
+            className="message-actions"
+            onClick={handleMenuOpen}
+          >
+            <MoreVertIcon fontSize="small" />
+          </IconButton>
+        )}
+      </Paper>
+
+      <Menu
+        anchorEl={menuAnchor}
+        open={Boolean(menuAnchor)}
+        onClose={handleMenuClose}
+        TransitionComponent={Fade}
+      >
+        <MenuItem onClick={handleCopy}>
+          Copier
+        </MenuItem>
+        <MenuItem onClick={handleMenuClose}>
+          Répondre
+        </MenuItem>
+        <MenuItem onClick={handleMenuClose}>
+          <PinIcon fontSize="small" sx={{ mr: 1 }} />
+          Épingler
+        </MenuItem>
+        <Divider />
+        {isOwn ? (
+          <MenuItem onClick={handleMenuClose} sx={{ color: CHAT_PALETTE.danger }}>
+            <DeleteIcon fontSize="small" sx={{ mr: 1 }} />
+            Supprimer
+          </MenuItem>
+        ) : (
+          <>
+            <MenuItem onClick={handleMenuClose}>
+              <BlockIcon fontSize="small" sx={{ mr: 1 }} />
+              Bloquer
+            </MenuItem>
+            <MenuItem onClick={handleMenuClose} sx={{ color: CHAT_PALETTE.danger }}>
+              <ReportIcon fontSize="small" sx={{ mr: 1 }} />
+              Signaler
+            </MenuItem>
+          </>
+        )}
+      </Menu>
+    </motion.div>
+  );
 };
 
-const ChatModal = ({ open, onClose, categoryId, categoryName }) => {
-  const theme = useTheme();
-  const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
-  const { user } = useAuth();
-  
-  const [loading, setLoading] = useState(true);
-  const [room, setRoom] = useState(null);
+// Composant ChatModal principal
+const ChatModal = ({ open, onClose, currentUser }) => {
+  // États
+  const [activeRoom, setActiveRoom] = useState(null);
+  const [rooms, setRooms] = useState([]);
   const [messages, setMessages] = useState([]);
   const [newMessage, setNewMessage] = useState('');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [loading, setLoading] = useState({
+    rooms: false,
+    messages: false,
+    sending: false
+  });
   const [participants, setParticipants] = useState([]);
+  const [error, setError] = useState(null);
   const [showParticipants, setShowParticipants] = useState(false);
+  const [isTyping, setIsTyping] = useState(false);
+  const [selectedFile, setSelectedFile] = useState(null);
   const [anchorEl, setAnchorEl] = useState(null);
-  const [notification, setNotification] = useState({ open: false, message: '', severity: 'info' });
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [pollingInterval, setPollingInterval] = useState(null);
   
+  // Références
   const messagesEndRef = useRef(null);
   const messagesContainerRef = useRef(null);
+  const fileInputRef = useRef(null);
+  const typingTimeoutRef = useRef(null);
+  
+  // Responsive
+  const isMobile = window.innerWidth < 768;
+  const isTablet = window.innerWidth >= 768 && window.innerWidth < 1024;
 
-  // Charger la salle de chat
-  const loadChatRoom = useCallback(async () => {
+  // Charger les discussions
+  const loadRooms = useCallback(async () => {
+    if (!currentUser) return;
+
+    setLoading(prev => ({ ...prev, rooms: true }));
+    setError(null);
+
     try {
-      setLoading(true);
-      const response = await axios.get(`/chat/room/${categoryId}`);
+      const response = await axios.get('/chat/rooms');
       
       if (response.data.success) {
-        setRoom(response.data.room);
-        setMessages(response.data.room.messages || []);
+        const sortedRooms = response.data.rooms.sort((a, b) => {
+          const timeA = new Date(a.last_message?.created_at || 0).getTime();
+          const timeB = new Date(b.last_message?.created_at || 0).getTime();
+          return timeB - timeA;
+        });
         
-        // Charger les participants
-        loadParticipants(response.data.room.id);
+        setRooms(sortedRooms);
         
-        // Démarrer le polling pour les nouveaux messages
-        startPolling(response.data.room.id);
+        // Sélectionner automatiquement la première room non lue ou la première
+        if (!activeRoom && sortedRooms.length > 0) {
+          const unreadRoom = sortedRooms.find(room => room.unread_count > 0);
+          handleRoomSelect(unreadRoom || sortedRooms[0]);
+        }
       }
     } catch (err) {
-      console.error('Erreur chargement chat:', err);
-      showNotification('Erreur de chargement du chat', 'error');
+      console.error('Erreur chargement rooms:', err);
+      setError('Impossible de charger les discussions');
     } finally {
-      setLoading(false);
+      setLoading(prev => ({ ...prev, rooms: false }));
     }
-  }, [categoryId]);
+  }, [currentUser, activeRoom]);
+
+  // Charger les messages
+  const loadMessages = useCallback(async (roomId, page = 1) => {
+    if (!roomId) return;
+
+    setLoading(prev => ({ ...prev, messages: true }));
+    
+    try {
+      const response = await axios.get(`/chat/room/${roomId}/messages?page=${page}&limit=50`);
+      
+      if (response.data.success) {
+        const messagesData = response.data.messages.data || response.data.messages || [];
+        const sortedMessages = messagesData.sort((a, b) => 
+          new Date(a.created_at) - new Date(b.created_at)
+        );
+        
+        setMessages(sortedMessages);
+        
+        // Marquer comme lu
+        await markAsRead(roomId);
+      }
+    } catch (err) {
+      console.error('Erreur chargement messages:', err);
+    } finally {
+      setLoading(prev => ({ ...prev, messages: false }));
+      scrollToBottom();
+    }
+  }, []);
+
+  // Marquer les messages comme lus
+  const markAsRead = async (roomId) => {
+    try {
+      await axios.post(`/chat/room/${roomId}/mark-read`);
+      
+      // Mettre à jour localement
+      setRooms(prev => prev.map(room => 
+        room.id === roomId ? { ...room, unread_count: 0 } : room
+      ));
+    } catch (err) {
+      console.error('Erreur marquage lu:', err);
+    }
+  };
 
   // Charger les participants
-  const loadParticipants = async (roomId) => {
+  const loadParticipants = useCallback(async (roomId) => {
+    if (!roomId) return;
+
     try {
       const response = await axios.get(`/chat/room/${roomId}/participants`);
+      
       if (response.data.success) {
         setParticipants(response.data.participants);
       }
     } catch (err) {
       console.error('Erreur chargement participants:', err);
     }
-  };
-
-  // Démarrer le polling pour les nouveaux messages
-  const startPolling = (roomId) => {
-    if (pollingInterval) clearInterval(pollingInterval);
-    
-    const interval = setInterval(async () => {
-      if (!roomId || !open) return;
-      
-      try {
-        const response = await axios.get(`/chat/room/${roomId}/messages`);
-        if (response.data.success && response.data.messages.data) {
-          setMessages(prev => {
-            const newMessages = response.data.messages.data;
-            const existingIds = new Set(prev.map(m => m.id));
-            const uniqueNewMessages = newMessages.filter(m => !existingIds.has(m.id));
-            
-            if (uniqueNewMessages.length > 0) {
-              // Trier par date
-              const allMessages = [...prev, ...uniqueNewMessages];
-              return allMessages.sort((a, b) => 
-                new Date(a.created_at) - new Date(b.created_at)
-              );
-            }
-            return prev;
-          });
-        }
-      } catch (err) {
-        console.error('Erreur polling:', err);
-      }
-    }, 3000); // Poll toutes les 3 secondes
-    
-    setPollingInterval(interval);
-  };
+  }, []);
 
   // Envoyer un message
   const sendMessage = async () => {
-    if (!newMessage.trim() || !room || isSubmitting) return;
-    
+    if (!newMessage.trim() || !activeRoom || loading.sending) return;
+
+    const messageContent = newMessage.trim();
+    setNewMessage('');
+    setLoading(prev => ({ ...prev, sending: true }));
+
     try {
-      setIsSubmitting(true);
-      const response = await axios.post(`/chat/room/${room.id}/message`, {
-        message: newMessage,
-        type: 'text'
-      });
+      const formData = new FormData();
+      formData.append('message', messageContent);
+      formData.append('type', 'text');
       
+      if (selectedFile) {
+        formData.append('file', selectedFile);
+      }
+
+      const response = await axios.post(
+        `/chat/room/${activeRoom.id}/message`,
+        formData,
+        {
+          headers: {
+            'Content-Type': 'multipart/form-data',
+          },
+        }
+      );
+
       if (response.data.success) {
         setMessages(prev => [...prev, response.data.message]);
-        setNewMessage('');
-        scrollToBottom();
+        setSelectedFile(null);
+        
+        // Mettre à jour la room
+        loadRooms();
       }
     } catch (err) {
       console.error('Erreur envoi message:', err);
-      showNotification('Erreur lors de l\'envoi du message', 'error');
+      setError('Erreur lors de l\'envoi du message');
+      setNewMessage(messageContent);
     } finally {
-      setIsSubmitting(false);
+      setLoading(prev => ({ ...prev, sending: false }));
+      scrollToBottom();
     }
+  };
+
+  // Gestionnaire de sélection de room
+  const handleRoomSelect = async (room) => {
+    setActiveRoom(room);
+    setMessages([]);
+    setShowParticipants(false);
+    setError(null);
+    
+    await Promise.all([
+      loadMessages(room.id),
+      loadParticipants(room.id)
+    ]);
   };
 
   // Scroll vers le bas
   const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    setTimeout(() => {
+      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }, 100);
   };
 
-  // Afficher notification
-  const showNotification = (message, severity = 'info') => {
-    setNotification({ open: true, message, severity });
+  // Gestionnaire de saisie
+  const handleTyping = () => {
+    if (typingTimeoutRef.current) {
+      clearTimeout(typingTimeoutRef.current);
+    }
+    
+    setIsTyping(true);
+    
+    typingTimeoutRef.current = setTimeout(() => {
+      setIsTyping(false);
+    }, 1500);
   };
 
-  // Gestionnaire de touche Entrée
-  const handleKeyPress = (e) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      sendMessage();
+  // Gestionnaire de fichier
+  const handleFileSelect = (event) => {
+    const file = event.target.files[0];
+    if (file) {
+      if (file.size > CHAT_SETTINGS.maxFileSize) {
+        setError('Fichier trop volumineux (max 5MB)');
+        return;
+      }
+      setSelectedFile(file);
     }
   };
 
-  // Menu contextuel
-  const handleMenuOpen = (event) => {
-    setAnchorEl(event.currentTarget);
-  };
-
-  const handleMenuClose = () => {
-    setAnchorEl(null);
-  };
+  // Filtrer les rooms
+  const filteredRooms = rooms.filter(room => {
+    if (!searchQuery) return true;
+    
+    const searchLower = searchQuery.toLowerCase();
+    return (
+      room.category?.nom?.toLowerCase().includes(searchLower) ||
+      room.last_message?.message?.toLowerCase().includes(searchLower) ||
+      room.participants?.some(p => 
+        p.user?.prenoms?.toLowerCase().includes(searchLower) ||
+        p.user?.nom?.toLowerCase().includes(searchLower)
+      )
+    );
+  });
 
   // Effets
   useEffect(() => {
-    if (open && categoryId) {
-      loadChatRoom();
+    if (open && currentUser) {
+      loadRooms();
+      
+      // Polling pour les nouveaux messages
+      const interval = setInterval(() => {
+        if (activeRoom) {
+          loadMessages(activeRoom.id);
+          loadRooms();
+        }
+      }, CHAT_SETTINGS.refreshInterval);
+      
+      return () => clearInterval(interval);
     }
-    
-    return () => {
-      if (pollingInterval) {
-        clearInterval(pollingInterval);
-        setPollingInterval(null);
-      }
-    };
-  }, [open, categoryId, loadChatRoom]);
+  }, [open, currentUser, activeRoom, loadRooms, loadMessages]);
 
   useEffect(() => {
     scrollToBottom();
   }, [messages]);
 
-  if (!open) return null;
+  useEffect(() => {
+    return () => {
+      if (typingTimeoutRef.current) {
+        clearTimeout(typingTimeoutRef.current);
+      }
+    };
+  }, []);
 
-  return (
-    <Dialog
-      open={open}
-      onClose={onClose}
-      maxWidth="md"
-      fullWidth
-      fullScreen={isMobile}
-      PaperProps={{
-        sx: {
-          height: isMobile ? '100vh' : '80vh',
-          maxHeight: '80vh',
-          borderRadius: isMobile ? 0 : 4,
-          overflow: 'hidden',
-          background: `linear-gradient(135deg, ${PALETTE.BROWN}05 0%, ${PALETTE.RED_DARK}02 100%)`,
-        }
-      }}
-    >
-      {/* Header */}
-      <DialogTitle sx={{ 
-        p: 2,
-        background: `linear-gradient(135deg, ${PALETTE.BROWN} 0%, ${PALETTE.RED_DARK} 100%)`,
-        color: PALETTE.WHITE,
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'space-between'
-      }}>
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-          {showParticipants && isMobile && (
-            <IconButton onClick={() => setShowParticipants(false)} sx={{ color: PALETTE.WHITE }}>
+  // Formatage de la date
+  const formatRoomTime = (dateString) => {
+    if (!dateString) return '';
+    
+    try {
+      const date = new Date(dateString);
+      const now = new Date();
+      const diffDays = Math.floor((now - date) / (1000 * 60 * 60 * 24));
+      
+      if (diffDays === 0) {
+        return format(date, 'HH:mm');
+      } else if (diffDays === 1) {
+        return 'Hier';
+      } else if (diffDays < 7) {
+        return format(date, 'EEEE', { locale: fr });
+      } else {
+        return format(date, 'dd/MM');
+      }
+    } catch (error) {
+      return '';
+    }
+  };
+
+  // Calculer les participants en ligne
+  const onlineParticipants = participants.filter(p => p.is_online).length;
+
+  // Rendu conditionnel pour mobile/desktop
+  const renderContent = () => {
+    if (isMobile) {
+      return renderMobileView();
+    }
+    return renderDesktopView();
+  };
+
+  const renderMobileView = () => {
+    if (showParticipants) {
+      return renderParticipantsView();
+    }
+    
+    if (activeRoom) {
+      return renderChatView();
+    }
+    
+    return renderRoomsView();
+  };
+
+  const renderDesktopView = () => (
+    <Box className="desktop-container">
+      {/* Sidebar */}
+      <Paper className="rooms-sidebar" elevation={3}>
+        <Box className="sidebar-header">
+          <Typography variant="h6" className="sidebar-title">
+            Discussions
+          </Typography>
+          <IconButton onClick={loadRooms} disabled={loading.rooms}>
+            <RefreshIcon />
+          </IconButton>
+        </Box>
+        
+        <TextField
+          fullWidth
+          variant="outlined"
+          size="small"
+          placeholder="Rechercher..."
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          className="search-input"
+          InputProps={{
+            startAdornment: (
+              <InputAdornment position="start">
+                <SearchIcon />
+              </InputAdornment>
+            ),
+          }}
+        />
+        
+        {renderRoomsList()}
+      </Paper>
+
+      {/* Chat Area */}
+      <Box className="chat-main-area">
+        {activeRoom ? renderChatView() : renderWelcomeView()}
+      </Box>
+
+      {/* Participants Panel */}
+      {showParticipants && (
+        <Paper className="participants-panel" elevation={3}>
+          {renderParticipantsView()}
+        </Paper>
+      )}
+    </Box>
+  );
+
+  const renderRoomsView = () => (
+    <Box className="rooms-view">
+      <Box className="rooms-header">
+        <Typography variant="h5" className="rooms-title">
+          Discussions
+        </Typography>
+        <IconButton onClick={loadRooms} disabled={loading.rooms}>
+          <RefreshIcon />
+        </IconButton>
+      </Box>
+      
+      <TextField
+        fullWidth
+        variant="outlined"
+        size="medium"
+        placeholder="Rechercher une discussion..."
+        value={searchQuery}
+        onChange={(e) => setSearchQuery(e.target.value)}
+        className="rooms-search"
+        InputProps={{
+          startAdornment: (
+            <InputAdornment position="start">
+              <SearchIcon />
+            </InputAdornment>
+          ),
+        }}
+      />
+      
+      {renderRoomsList()}
+    </Box>
+  );
+
+  const renderRoomsList = () => {
+    if (loading.rooms) {
+      return (
+        <Box className="loading-container">
+          <CircularProgress sx={{ color: CHAT_PALETTE.primary }} />
+        </Box>
+      );
+    }
+
+    if (filteredRooms.length === 0) {
+      return (
+        <Box className="empty-state">
+          <ChatIcon sx={{ fontSize: 60, color: CHAT_PALETTE.gray, mb: 2 }} />
+          <Typography color="text.secondary" align="center">
+            {searchQuery ? 'Aucune discussion trouvée' : 'Aucune discussion'}
+          </Typography>
+        </Box>
+      );
+    }
+
+    return (
+      <List className="rooms-list">
+        <AnimatePresence>
+          {filteredRooms.map((room) => (
+            <motion.div
+              key={room.id}
+              initial={{ opacity: 0, x: -20 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: 20 }}
+            >
+              <ListItem
+                button
+                selected={activeRoom?.id === room.id}
+                onClick={() => handleRoomSelect(room)}
+                className="room-item"
+              >
+                <ListItemAvatar>
+                  <Badge
+                    badgeContent={room.unread_count}
+                    color="error"
+                    invisible={!room.unread_count}
+                  >
+                    <Avatar
+                      className="room-avatar"
+                      sx={{ bgcolor: CHAT_PALETTE.primary }}
+                    >
+                      {room.category?.nom?.[0] || 'G'}
+                    </Avatar>
+                  </Badge>
+                </ListItemAvatar>
+                
+                <ListItemText
+                  primary={
+                    <Box className="room-primary">
+                      <Typography variant="subtitle1" className="room-name">
+                        {room.category?.nom || 'Groupe'}
+                      </Typography>
+                      {room.unread_count > 0 && (
+                        <Chip
+                          label={room.unread_count}
+                          size="small"
+                          color="error"
+                          className="unread-badge"
+                        />
+                      )}
+                    </Box>
+                  }
+                  secondary={
+                    <>
+                      <Typography variant="body2" className="room-last-message" noWrap>
+                        {room.last_message?.message || 'Aucun message'}
+                      </Typography>
+                      <Typography variant="caption" className="room-time">
+                        {formatRoomTime(room.last_message?.created_at)}
+                      </Typography>
+                    </>
+                  }
+                />
+                
+                <ListItemSecondaryAction>
+                  <IconButton size="small" edge="end">
+                    <MoreVertIcon />
+                  </IconButton>
+                </ListItemSecondaryAction>
+              </ListItem>
+              <Divider variant="inset" component="li" />
+            </motion.div>
+          ))}
+        </AnimatePresence>
+      </List>
+    );
+  };
+
+  const renderChatView = () => (
+    <Box className="chat-view">
+      {/* Chat Header */}
+      <AppBar position="static" className="chat-header" elevation={1}>
+        <Toolbar>
+          {isMobile && (
+            <IconButton
+              edge="start"
+              color="inherit"
+              onClick={() => setActiveRoom(null)}
+              sx={{ mr: 2 }}
+            >
               <ArrowBackIcon />
             </IconButton>
           )}
-          <Box>
-            <Typography variant="h6" fontWeight="bold">
-              {showParticipants ? 'Participants' : categoryName}
+          
+          <Avatar
+            className="chat-header-avatar"
+            sx={{ bgcolor: CHAT_PALETTE.primary, mr: 2 }}
+          >
+            {activeRoom?.category?.nom?.[0] || 'G'}
+          </Avatar>
+          
+          <Box sx={{ flexGrow: 1 }}>
+            <Typography variant="h6" className="chat-room-name">
+              {activeRoom?.category?.nom || 'Discussion'}
             </Typography>
-            <Typography variant="caption" sx={{ opacity: 0.9 }}>
-              {showParticipants 
-                ? `${participants.length} participant${participants.length > 1 ? 's' : ''}` 
-                : room?.description || 'Discussion en cours'}
+            <Typography variant="caption" className="chat-room-info">
+              {participants.length} participant(s) • {onlineParticipants} en ligne
             </Typography>
           </Box>
-        </Box>
-        
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-          {!showParticipants && (
-            <Tooltip title="Participants">
-              <IconButton 
-                onClick={() => setShowParticipants(true)}
-                sx={{ color: PALETTE.WHITE }}
-              >
-                <Badge 
-                  badgeContent={participants.length} 
-                  color="secondary"
-                  max={99}
-                >
-                  <PeopleIcon />
-                </Badge>
-              </IconButton>
-            </Tooltip>
-          )}
           
-          <IconButton 
-            onClick={handleMenuOpen}
-            sx={{ color: PALETTE.WHITE }}
+          <IconButton
+            color="inherit"
+            onClick={() => setShowParticipants(!showParticipants)}
           >
+            <PeopleIcon />
+          </IconButton>
+          
+          <IconButton color="inherit">
             <MoreVertIcon />
           </IconButton>
-          
-          <IconButton 
-            onClick={onClose}
-            sx={{ color: PALETTE.WHITE }}
-          >
-            <CloseIcon />
-          </IconButton>
-        </Box>
-      </DialogTitle>
+        </Toolbar>
+      </AppBar>
 
-      {/* Menu contextuel */}
-      <Menu
-        anchorEl={anchorEl}
-        open={Boolean(anchorEl)}
-        onClose={handleMenuClose}
-      >
-        <MenuItem onClick={() => {
-          navigator.clipboard.writeText(room?.id);
-          showNotification('ID du chat copié', 'success');
-          handleMenuClose();
-        }}>
-          Copier l'ID du chat
-        </MenuItem>
-        <MenuItem onClick={() => {
-          // Muter les notifications
-          handleMenuClose();
-        }}>
-          Muter les notifications
-        </MenuItem>
-        <MenuItem onClick={() => {
-          // Exporter l'historique
-          handleMenuClose();
-        }}>
-          Exporter l'historique
-        </MenuItem>
-      </Menu>
-
-      {/* Contenu principal */}
-      <DialogContent sx={{ 
-        p: 0, 
-        display: 'flex', 
-        flexDirection: 'column',
-        overflow: 'hidden'
-      }}>
-        {loading ? (
-          <Box sx={{ 
-            display: 'flex', 
-            justifyContent: 'center', 
-            alignItems: 'center', 
-            height: '100%' 
-          }}>
-            <CircularProgress sx={{ color: PALETTE.OR }} />
+      {/* Messages Container */}
+      <Box className="messages-container" ref={messagesContainerRef}>
+        {loading.messages && messages.length === 0 ? (
+          <Box className="loading-messages">
+            <CircularProgress sx={{ color: CHAT_PALETTE.primary }} />
           </Box>
-        ) : showParticipants ? (
-          // Vue participants
-          <Box sx={{ p: 2, overflowY: 'auto', flex: 1 }}>
-            <Typography variant="subtitle1" fontWeight="bold" sx={{ mb: 2, color: PALETTE.RED_DARK }}>
-              Promoteurs ({participants.filter(p => p.role === 'promoteur').length})
+        ) : messages.length === 0 ? (
+          <Box className="no-messages">
+            <ChatIcon sx={{ fontSize: 80, color: CHAT_PALETTE.gray, mb: 2 }} />
+            <Typography variant="h6" color="text.secondary" gutterBottom>
+              Aucun message
             </Typography>
-            <List>
-              {participants
-                .filter(p => p.role === 'promoteur')
-                .map((participant) => (
-                  <ListItem key={participant.id}>
-                    <ListItemAvatar>
-                      <Badge
-                        overlap="circular"
-                        anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
-                        variant="dot"
-                        color={participant.is_online ? 'success' : 'default'}
-                      >
-                        <Avatar 
-                          src={participant.user?.photo_url} 
-                          sx={{ 
-                            bgcolor: PALETTE.OR,
-                            width: 40,
-                            height: 40
-                          }}
-                        >
-                          {participant.user?.prenoms?.[0]}
-                        </Avatar>
-                      </Badge>
-                    </ListItemAvatar>
-                    <ListItemText
-                      primary={
-                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                          <Typography variant="body1" fontWeight="bold">
-                            {participant.user?.prenoms} {participant.user?.nom}
-                          </Typography>
-                          {participant.is_current_user && (
-                            <Chip label="Vous" size="small" sx={{ 
-                              bgcolor: PALETTE.OR, 
-                              color: PALETTE.WHITE,
-                              height: 20 
-                            }} />
-                          )}
-                        </Box>
-                      }
-                      secondary="Promoteur"
-                    />
-                  </ListItem>
-                ))}
-            </List>
-
-            <Divider sx={{ my: 3 }} />
-
-            <Typography variant="subtitle1" fontWeight="bold" sx={{ mb: 2, color: PALETTE.RED_DARK }}>
-              Candidats ({participants.filter(p => p.role === 'candidat').length})
+            <Typography variant="body2" color="text.secondary">
+              Soyez le premier à envoyer un message !
             </Typography>
-            <List>
-              {participants
-                .filter(p => p.role === 'candidat')
-                .map((participant) => (
-                  <ListItem key={participant.id}>
-                    <ListItemAvatar>
-                      <Badge
-                        overlap="circular"
-                        anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
-                        variant="dot"
-                        color={participant.is_online ? 'success' : 'default'}
-                      >
-                        <Avatar 
-                          src={participant.user?.photo_url} 
-                          sx={{ 
-                            bgcolor: PALETTE.BROWN,
-                            width: 40,
-                            height: 40
-                          }}
-                        >
-                          {participant.user?.prenoms?.[0]}
-                        </Avatar>
-                      </Badge>
-                    </ListItemAvatar>
-                    <ListItemText
-                      primary={
-                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                          <Typography variant="body1">
-                            {participant.user?.prenoms} {participant.user?.nom}
-                          </Typography>
-                          {participant.is_current_user && (
-                            <Chip label="Vous" size="small" sx={{ 
-                              bgcolor: PALETTE.OR, 
-                              color: PALETTE.WHITE,
-                              height: 20 
-                            }} />
-                          )}
-                        </Box>
-                      }
-                      secondary={
-                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mt: 0.5 }}>
-                          <SchoolIcon fontSize="small" sx={{ fontSize: 14 }} />
-                          <Typography variant="caption">
-                            {participant.user?.universite || 'Étudiant'}
-                          </Typography>
-                        </Box>
-                      }
-                    />
-                  </ListItem>
-                ))}
-            </List>
           </Box>
         ) : (
-          // Vue messages
           <>
-            {/* Zone des messages */}
-            <Box 
-              ref={messagesContainerRef}
-              sx={{ 
-                flex: 1, 
-                overflowY: 'auto',
-                p: 2,
-                background: `linear-gradient(180deg, ${PALETTE.WHITE} 0%, ${PALETTE.BROWN}02 100%)`
-              }}
-            >
-              {messages.length === 0 ? (
-                <Box sx={{ 
-                  display: 'flex', 
-                  flexDirection: 'column', 
-                  alignItems: 'center', 
-                  justifyContent: 'center',
-                  height: '100%',
-                  color: PALETTE.BROWN,
-                  textAlign: 'center'
-                }}>
-                  <Typography variant="h6" gutterBottom>
-                    🎉 Bienvenue dans le chat !
-                  </Typography>
-                  <Typography variant="body2" sx={{ maxWidth: 400, mb: 3 }}>
-                    Soyez le premier à envoyer un message dans cette conversation.
-                    Échangez avec les autres candidats et le promoteur.
-                  </Typography>
-                  <Chip 
-                    icon={<PeopleIcon />}
-                    label={`${participants.length} participant${participants.length > 1 ? 's' : ''} en ligne`}
-                    sx={{ bgcolor: PALETTE.OR, color: PALETTE.WHITE }}
-                  />
-                </Box>
-              ) : (
-                <>
-                  {messages.map((message) => (
-                    <ChatMessage 
-                      key={message.id} 
-                      message={message} 
-                      isOwn={message.user_id === user?.id}
-                    />
-                  ))}
-                  <div ref={messagesEndRef} />
-                </>
-              )}
-            </Box>
-
-            {/* Zone de saisie */}
-            <Paper 
-              elevation={0} 
-              sx={{ 
-                p: 2, 
-                borderTop: `1px solid ${PALETTE.OR}20`,
-                background: PALETTE.WHITE
-              }}
-            >
-              <Box sx={{ display: 'flex', alignItems: 'flex-end', gap: 1 }}>
-                <IconButton size="small" sx={{ color: PALETTE.BROWN }}>
-                  <AttachFileIcon />
-                </IconButton>
-                <IconButton size="small" sx={{ color: PALETTE.BROWN }}>
-                  <EmojiIcon />
-                </IconButton>
-                
-                <TextField
-                  fullWidth
-                  multiline
-                  maxRows={4}
-                  value={newMessage}
-                  onChange={(e) => setNewMessage(e.target.value)}
-                  onKeyPress={handleKeyPress}
-                  placeholder="Écrivez votre message..."
-                  variant="outlined"
-                  size="small"
-                  disabled={isSubmitting}
-                  sx={{
-                    '& .MuiOutlinedInput-root': {
-                      borderRadius: 3,
-                      backgroundColor: PALETTE.WHITE,
-                      '&:hover': {
-                        borderColor: PALETTE.OR,
-                      }
-                    }
-                  }}
-                />
-                
-                <Tooltip title="Envoyer (Entrée)">
-                  <span>
-                    <IconButton
-                      onClick={sendMessage}
-                      disabled={!newMessage.trim() || isSubmitting}
-                      sx={{
-                        bgcolor: PALETTE.OR,
-                        color: PALETTE.WHITE,
-                        '&:hover': {
-                          bgcolor: PALETTE.OR_DARK,
-                        },
-                        '&.Mui-disabled': {
-                          bgcolor: `${PALETTE.OR}50`,
-                          color: `${PALETTE.WHITE}80`
-                        }
-                      }}
-                    >
-                      {isSubmitting ? (
-                        <CircularProgress size={20} sx={{ color: PALETTE.WHITE }} />
-                      ) : (
-                        <SendIcon />
-                      )}
-                    </IconButton>
-                  </span>
-                </Tooltip>
+            {messages.map((message) => (
+              <MessageBubble
+                key={message.id}
+                message={message}
+                isOwn={message.user_id === currentUser?.id}
+                currentUser={currentUser}
+              />
+            ))}
+            
+            {isTyping && (
+              <Box className="typing-indicator">
+                <div className="typing-dots">
+                  <span></span>
+                  <span></span>
+                  <span></span>
+                </div>
+                <Typography variant="caption" color="text.secondary">
+                  Quelqu'un tape...
+                </Typography>
               </Box>
-              <Typography variant="caption" sx={{ color: PALETTE.BROWN, mt: 1, display: 'block', textAlign: 'center' }}>
-                Appuyez sur Entrée pour envoyer, Shift+Entrée pour une nouvelle ligne
-              </Typography>
-            </Paper>
+            )}
+            
+            <div ref={messagesEndRef} />
           </>
         )}
-      </DialogContent>
+      </Box>
 
-      {/* Notification */}
-      <Snackbar
-        open={notification.open}
-        autoHideDuration={3000}
-        onClose={() => setNotification(prev => ({ ...prev, open: false }))}
-        anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
+      {/* Input Area */}
+      <Paper className="input-container" elevation={3}>
+        {selectedFile && (
+          <Box className="file-preview">
+            <Chip
+              label={selectedFile.name}
+              onDelete={() => setSelectedFile(null)}
+              icon={<AttachFileIcon />}
+            />
+          </Box>
+        )}
+        
+        <Box className="input-row">
+          <IconButton
+            onClick={() => fileInputRef.current?.click()}
+            className="attach-button"
+          >
+            <AttachFileIcon />
+          </IconButton>
+          
+          <input
+            type="file"
+            ref={fileInputRef}
+            style={{ display: 'none' }}
+            onChange={handleFileSelect}
+            accept="image/*,video/*,.pdf,.doc,.docx"
+          />
+          
+          <IconButton className="emoji-button">
+            <EmojiEmotionsIcon />
+          </IconButton>
+          
+          <TextField
+            fullWidth
+            variant="outlined"
+            placeholder="Tapez votre message..."
+            value={newMessage}
+            onChange={(e) => {
+              setNewMessage(e.target.value);
+              handleTyping();
+            }}
+            onKeyPress={(e) => {
+              if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                sendMessage();
+              }
+            }}
+            className="message-input"
+            multiline
+            maxRows={4}
+            disabled={loading.sending}
+          />
+          
+          <IconButton
+            onClick={sendMessage}
+            disabled={!newMessage.trim() && !selectedFile || loading.sending}
+            className="send-button"
+            sx={{
+              bgcolor: CHAT_PALETTE.primary,
+              color: 'white',
+              '&:hover': { bgcolor: CHAT_PALETTE.primaryDark },
+              '&.Mui-disabled': { bgcolor: CHAT_PALETTE.gray },
+            }}
+          >
+            {loading.sending ? (
+              <CircularProgress size={24} sx={{ color: 'white' }} />
+            ) : (
+              <SendIcon />
+            )}
+          </IconButton>
+        </Box>
+      </Paper>
+    </Box>
+  );
+
+  const renderParticipantsView = () => (
+    <Box className="participants-view">
+      <Box className="participants-header">
+        {isMobile && (
+          <IconButton
+            edge="start"
+            onClick={() => setShowParticipants(false)}
+            sx={{ mr: 2 }}
+          >
+            <ArrowBackIcon />
+          </IconButton>
+        )}
+        
+        <Typography variant="h6" className="participants-title">
+          Participants ({participants.length})
+        </Typography>
+        
+        <IconButton edge="end">
+          <SettingsIcon />
+        </IconButton>
+      </Box>
+      
+      <List className="participants-list">
+        {participants.map((participant) => (
+          <ListItem key={participant.id} className="participant-item">
+            <ListItemAvatar>
+              <Badge
+                overlap="circular"
+                anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
+                variant="dot"
+                color={participant.is_online ? 'success' : 'default'}
+              >
+                <Avatar
+                  src={participant.user?.photo_url}
+                  sx={{ bgcolor: CHAT_PALETTE.primary }}
+                >
+                  {participant.user?.prenoms?.[0]}
+                </Avatar>
+              </Badge>
+            </ListItemAvatar>
+            
+            <ListItemText
+              primary={
+                <Box className="participant-primary">
+                  <Typography variant="subtitle1">
+                    {participant.user?.prenoms} {participant.user?.nom}
+                  </Typography>
+                  {participant.user?.type_compte === 'promoteur' && (
+                    <Chip label="Promoteur" size="small" color="warning" />
+                  )}
+                </Box>
+              }
+              secondary={
+                <Typography variant="caption" color="text.secondary">
+                  {participant.is_online ? 'En ligne' : 'Hors ligne'}
+                </Typography>
+              }
+            />
+            
+            <ListItemSecondaryAction>
+              <IconButton size="small">
+                <MoreVertIcon />
+              </IconButton>
+            </ListItemSecondaryAction>
+          </ListItem>
+        ))}
+      </List>
+    </Box>
+  );
+
+  const renderWelcomeView = () => (
+    <Box className="welcome-view">
+      <motion.div
+        initial={{ scale: 0 }}
+        animate={{ scale: 1 }}
+        transition={{ delay: 0.2 }}
       >
-        <Alert 
-          severity={notification.severity} 
-          onClose={() => setNotification(prev => ({ ...prev, open: false }))}
-          sx={{ 
-            bgcolor: notification.severity === 'success' ? PALETTE.SUCCESS : 
-                    notification.severity === 'error' ? PALETTE.RED_DARK : PALETTE.INFO,
-            color: PALETTE.WHITE
-          }}
-        >
-          {notification.message}
-        </Alert>
-      </Snackbar>
+        <ChatIcon sx={{ fontSize: 120, color: CHAT_PALETTE.gray, mb: 3 }} />
+      </motion.div>
+      
+      <Typography variant="h4" gutterBottom className="welcome-title">
+        Bienvenue sur le Chat
+      </Typography>
+      
+      <Typography variant="body1" color="text.secondary" paragraph align="center">
+        Sélectionnez une discussion pour commencer à chatter
+      </Typography>
+      
+      <Button
+        variant="contained"
+        startIcon={<ChatIcon />}
+        sx={{
+          bgcolor: CHAT_PALETTE.primary,
+          mt: 2,
+          px: 4,
+          py: 1.5,
+          borderRadius: 50,
+        }}
+      >
+        Nouvelle Discussion
+      </Button>
+    </Box>
+  );
+
+  return (
+    <Dialog
+      fullScreen={isMobile}
+      open={open}
+      onClose={onClose}
+      maxWidth="xl"
+      fullWidth
+      className="chat-modal"
+      PaperProps={{
+        sx: {
+          height: isMobile ? '100vh' : '90vh',
+          maxHeight: '90vh',
+          borderRadius: isMobile ? 0 : 2,
+          overflow: 'hidden',
+        },
+      }}
+    >
+      <DialogContent sx={{ p: 0, height: '100%' }}>
+        {renderContent()}
+      </DialogContent>
     </Dialog>
   );
 };

@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
-import axiosInstance from '../../lib/axios';
+import axios from '../../utils/axiosConfig';
 import { toast } from 'react-hot-toast';
 import {
   Box,
@@ -87,7 +87,7 @@ const GestionEditions = () => {
     queryKey: ['promoteur-editions'],
     queryFn: async () => {
       try {
-        const response = await axiosInstance.get('/promoteur/editions');
+        const response = await axios.get('/promoteur/editions');
         console.log('Éditions récupérées:', response.data?.data);
         return response.data?.data || [];
       } catch (error) {
@@ -99,7 +99,7 @@ const GestionEditions = () => {
 
   // Mutation pour créer une édition
   const createEditionMutation = useMutation({
-    mutationFn: (data) => axiosInstance.post('/promoteur/editions', data),
+    mutationFn: (data) => axios.post('/promoteur/editions', data),
     onSuccess: () => {
       queryClient.invalidateQueries(['promoteur-editions']);
       setModalOpen(false);
@@ -113,7 +113,7 @@ const GestionEditions = () => {
 
   // Mutation pour modifier une édition
   const updateEditionMutation = useMutation({
-    mutationFn: ({ id, data }) => axiosInstance.put(`/promoteur/editions/${id}`, data),
+    mutationFn: ({ id, data }) => axios.put(`/promoteur/editions/${id}`, data),
     onSuccess: () => {
       queryClient.invalidateQueries(['promoteur-editions']);
       setModalOpen(false);
@@ -128,7 +128,7 @@ const GestionEditions = () => {
   // Mutation pour ouvrir les inscriptions
   const openRegistrationsMutation = useMutation({
     mutationFn: ({ id, dates }) => 
-      axiosInstance.post(`/promoteur/editions/${id}/ouvrir-inscriptions`, dates),
+      axios.post(`/promoteur/editions/${id}/ouvrir-inscriptions`, dates),
     onSuccess: () => {
       queryClient.invalidateQueries(['promoteur-editions']);
       setModalOpen(false);
@@ -144,7 +144,7 @@ const GestionEditions = () => {
   const closeRegistrationsMutation = useMutation({
     mutationFn: ({ id, reason }) => {
       console.log('Fermeture inscriptions pour édition:', id);
-      return axiosInstance.post(`/promoteur/editions/${id}/fermer-inscriptions`, { reason });
+      return axios.post(`/promoteur/editions/${id}/fermer-inscriptions`, { reason });
     },
     onSuccess: (response) => {
       console.log('Réponse fermeture:', response.data);
@@ -160,7 +160,7 @@ const GestionEditions = () => {
   // Mutation pour gérer les catégories
   const categoryMutation = useMutation({
     mutationFn: ({ editionId, data }) => 
-      axiosInstance.post(`/promoteur/editions/${editionId}/categories`, data),
+      axios.post(`/promoteur/editions/${editionId}/categories`, data),
     onSuccess: () => {
       queryClient.invalidateQueries(['promoteur-editions']);
       setModalOpen(false);
@@ -197,7 +197,7 @@ const GestionEditions = () => {
         default:
           throw new Error('Action inconnue');
       }
-      return axiosInstance.post(`/promoteur/editions/${editionId}/${endpoint}`, data);
+      return axios.post(`/promoteur/editions/${editionId}/${endpoint}`, data);
     },
     onSuccess: (response, variables) => {
       queryClient.invalidateQueries(['promoteur-editions']);
@@ -1273,7 +1273,7 @@ const GestionEditions = () => {
         onClose={() => setConfigVotesModalOpen(false)}
         edition={selectedEdition}
         onSuccess={handleConfigVotesSuccess}
-        api={axiosInstance}
+        api={axios}
       />
 
       {/* Modal pour gérer les votes */}

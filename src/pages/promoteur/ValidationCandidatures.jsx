@@ -78,7 +78,7 @@ import {
   Download as DownloadCloudIcon,
 } from '@mui/icons-material';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import axiosInstance from '../../lib/axios';
+import axios from '../../utils/axiosConfig';
 import { toast } from 'react-hot-toast';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
@@ -137,7 +137,7 @@ const ValidationCandidatures = () => {
         if (filterCategory && filterCategory !== 'tous') params.category_id = filterCategory;
         
         console.log('Requête API avec params:', params);
-        const response = await axiosInstance.get(`/promoteur/editions/${editionId}/candidatures`, { params });
+        const response = await axios.get(`/promoteur/editions/${editionId}/candidatures`, { params });
         
         console.log('Réponse API:', response.data);
         
@@ -173,7 +173,7 @@ const ValidationCandidatures = () => {
     queryKey: ['edition', editionId],
     queryFn: async () => {
       try {
-        const response = await axiosInstance.get(`/editions/${editionId}`);
+        const response = await axios.get(`/editions/${editionId}`);
         return response.data?.data || response.data;
       } catch (error) {
         console.error('Erreur chargement édition:', error);
@@ -191,7 +191,7 @@ const ValidationCandidatures = () => {
     queryKey: ['categories', editionId],
     queryFn: async () => {
       try {
-        const response = await axiosInstance.get(`/editions/${editionId}/categories`);
+        const response = await axios.get(`/editions/${editionId}/categories`);
         return response.data?.data || response.data || [];
       } catch (error) {
         console.error('Erreur chargement catégories:', error);
@@ -204,7 +204,7 @@ const ValidationCandidatures = () => {
   // ==================== MUTATIONS ====================
   const validationMutation = useMutation({
     mutationFn: async ({ candidatureId, statut, motif_refus }) => {
-      const response = await axiosInstance.post(
+      const response = await axios.post(
         `/promoteur/candidatures/${candidatureId}/valider`,
         { 
           statut,

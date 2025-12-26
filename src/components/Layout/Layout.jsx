@@ -5,6 +5,8 @@ import Footer from './Footer';
 import LoadingScreen from './LoadingScreen';
 import { Box, keyframes, Typography } from '@mui/material';
 import { useLoading } from '../../contexts/LoadingContext';
+// Dans Layout.jsx, assurez-vous d'inclure le CSS
+import '../../styles/chat.css';
 
 const rotateAnimation = keyframes`
   from { transform: rotate(0deg); }

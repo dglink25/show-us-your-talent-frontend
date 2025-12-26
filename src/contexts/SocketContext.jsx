@@ -13,51 +13,79 @@ export const useSocket = () => {
 export const SocketProvider = ({ children }) => {
   const [notificationsCount, setNotificationsCount] = useState(0);
   const [isConnected, setIsConnected] = useState(false);
+  const [socket, setSocket] = useState(null);
 
-  // Simulation de connexion socket - à remplacer par une vraie connexion si nécessaire
-  useEffect(() => {
-    // Simuler une connexion
-    const timer = setTimeout(() => {
-      setIsConnected(true);
-      console.log('Socket simulé connecté');
-    }, 1000);
+  const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
-    // Charger les notifications initiales
-    const loadInitialNotifications = async () => {
-      try {
-        const token = localStorage.getItem('token');
-        if (!token) return;
+  // Charger les notifications initiales
+  const loadInitialNotifications = async () => {
+    try {
+      const token = localStorage.getItem('token');
+      if (!token) return;
 
-        const response = await fetch('http://localhost:8000/api/chat/notifications', {
-          headers: {
-            'Authorization': `Bearer ${token}`,
-          },
-        });
+      const response = await fetch(`${API_BASE_URL}/chat/notifications`, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Accept': 'application/json',
+        },
+        credentials: 'include',
+      });
 
-        if (response.ok) {
-          const data = await response.json();
-          if (data.success) {
-            const unreadCount = data.notifications?.filter(n => !n.is_read).length || 0;
-            setNotificationsCount(unreadCount);
-          }
+      if (response.ok) {
+        const data = await response.json();
+        if (data.success) {
+          const unreadCount = data.notifications?.filter(n => !n.is_read).length || 0;
+          setNotificationsCount(unreadCount);
         }
-      } catch (error) {
-        console.error('Erreur chargement notifications:', error);
       }
+    } catch (error) {
+      console.error('Erreur chargement notifications:', error);
+    }
+  };
+
+  // Simuler une connexion WebSocket
+  useEffect(() => {
+    const token = localStorage.getItem('token');
+    if (!token) return;
+
+    // Simuler une connexion socket
+    const simulateSocket = () => {
+      console.log('Simulation WebSocket activée');
+      setIsConnected(true);
+
+      // Simuler la réception de notifications
+      const interval = setInterval(() => {
+        // Mettre à jour périodiquement les notifications
+        loadInitialNotifications();
+      }, 30000); // Toutes les 30 secondes
+
+      return () => {
+        clearInterval(interval);
+        setIsConnected(false);
+      };
     };
 
     loadInitialNotifications();
+    const cleanup = simulateSocket();
 
     return () => {
-      clearTimeout(timer);
-      setIsConnected(false);
+      if (cleanup) cleanup();
     };
+  }, []);
+
+  // Recharger les notifications quand l'utilisateur se connecte
+  useEffect(() => {
+    const token = localStorage.getItem('token');
+    if (token) {
+      loadInitialNotifications();
+    }
   }, []);
 
   const value = {
     notificationsCount,
     setNotificationsCount,
     isConnected,
+    loadNotifications: loadInitialNotifications,
   };
 
   return (

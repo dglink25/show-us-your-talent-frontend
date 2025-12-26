@@ -506,7 +506,7 @@ const Login = () => {
                           background: '#e0e0e0',
                         },
                       }}
-                      startIcon={loading ? <CircularProgress size={20} color="inherit" /> : <RocketIcon />}
+                      
                     >
                       {loading ? 'Connexion...' : 'Se connecter'}
                     </Button>

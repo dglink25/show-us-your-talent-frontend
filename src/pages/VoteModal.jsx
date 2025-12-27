@@ -25,7 +25,7 @@ import {
   Groups as GroupsIcon,
   CheckCircle as CheckCircleIcon,
 } from '@mui/icons-material';
-import axios from '../../api/axios';
+import axios from '../api/axios';
 
 const VoteModal = ({ open, onClose, candidat, edition }) => {
   const [loading, setLoading] = useState(false);

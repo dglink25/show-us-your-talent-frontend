@@ -36,7 +36,7 @@ import {
   Twitter as TwitterIcon,
 } from '@mui/icons-material';
 import { motion } from 'framer-motion';
-import axios from '../../api/axios';
+import axios from '../api/axios';
 
 const VoteSuccessPage = () => {
   const navigate = useNavigate();

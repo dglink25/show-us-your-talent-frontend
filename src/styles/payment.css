@@ -1,0 +1,32 @@
+/* styles/payment.css */
+.payment-container {
+  min-height: 100vh;
+  background: linear-gradient(135deg, #f5f5f5 0%, #fff 100%);
+}
+
+.payment-card {
+  transition: all 0.3s ease;
+  border: 2px solid transparent;
+}
+
+.payment-card:hover {
+  transform: translateY(-5px);
+  box-shadow: 0 20px 40px rgba(139, 0, 0, 0.1);
+  border-color: #D4AF37;
+}
+
+.payment-success-animation {
+  animation: successPulse 2s infinite;
+}
+
+@keyframes successPulse {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.05); }
+}
+
+.countdown-timer {
+  font-family: 'Courier New', monospace;
+  background: linear-gradient(135deg, #8B0000 0%, #D4AF37 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}

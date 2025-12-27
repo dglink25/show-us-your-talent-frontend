@@ -1,0 +1,15 @@
+export const PALETTE = {
+  OR: '#D4AF37',
+  OR_LIGHT: '#FFD700',
+  OR_DARK: '#B8860B',
+  RED_DARK: '#8B0000',
+  RED_DARK_LIGHT: '#B22222',
+  BROWN: '#8B4513',
+  BROWN_LIGHT: '#A0522D',
+  WHITE: '#FFFFFF',
+  BLACK: '#000000',
+  GRAY_LIGHT: '#F5F5F5',
+  GRAY_DARK: '#333333',
+};
+
+export default PALETTE;

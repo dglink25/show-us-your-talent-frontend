@@ -1,5 +1,4 @@
-// App.jsx
-import React from 'react';
+import React, { lazy, Suspense } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { QueryClientProvider } from '@tanstack/react-query';
 import { ReactQueryDevtools } from '@tanstack/react-query-devtools';
@@ -24,6 +23,12 @@ import GestionEditions from './pages/promoteur/GestionEditions';
 import ValidationCandidatures from './pages/promoteur/ValidationCandidatures';
 import CandidatsPage from './pages/CandidatsPage';
 import DiscussionsPage from './pages/DiscussionsPage';
+const PaymentModal = lazy(() => import('./pages/PaymentModal'));
+const VoteSuccessPage = lazy(() => import('./pages/VoteSuccessPage'));
+const PaymentErrorPage = lazy(() => import('./pages/PaymentErrorPage'));
+import PaymentPage from './pages/PaymentPage';
+import PaymentSuccessPage from './pages/PaymentSuccessPage';
+import PaymentFailedPage from './pages/PaymentFailedPage';
 
 // Créez un fichier séparé pour les composants qui utilisent useAuth
 import DashboardSelection from './components/DashboardSelection';
@@ -40,13 +45,29 @@ const LoadingSpinner = () => (
   </div>
 );
 
+const LoadingFallback = () => (
+  <Box sx={{ 
+    display: 'flex', 
+    justifyContent: 'center', 
+    alignItems: 'center', 
+    minHeight: '50vh' 
+  }}>
+    <CircularProgress />
+  </Box>
+);
+
 // Main App Content - sans providers ici
 const AppContent = () => {
   return (
     <div className="App">
       <Layout>
+        <Suspense fallback={<LoadingFallback />}>
         <Routes>
           {/* Routes publiques */}
+          <Route path="/payment" element={<PaymentPage />} />
+          <Route path="/payment/success" element={<PaymentSuccessPage />} />
+          <Route path="/payment/failed" element={<PaymentFailedPage />} />
+          <Route path="/payment/:candidatId" element={<PaymentPage />} />
           <Route path="/" element={<Home />} />
           <Route path="/login" element={<Login />} />
           <Route path="/set-password" element={<SetPassword />} />
@@ -85,16 +106,18 @@ const AppContent = () => {
             }
           />
 
+          <Route
+            path="/discussions"
+            element={
+              <ProtectedRoute>
+                <DiscussionsPage />
+              </ProtectedRoute>
+            }
+          />
           
-<Route
-  path="/discussions"
-  element={
-    <ProtectedRoute>
-      <DiscussionsPage />
-    </ProtectedRoute>
-  }
-/>
-
+            <Route path="/vote/success" element={<VoteSuccessPage />} />
+            <Route path="/vote/error" element={<PaymentErrorPage />} />
+         
           <Route
             path="/promoteur/editions/nouvelle"
             element={
@@ -152,6 +175,7 @@ const AppContent = () => {
           {/* Route 404 */}
           <Route path="*" element={<Navigate to="/" />} />
         </Routes>
+        </Suspense>
       </Layout>
     </div>
   );

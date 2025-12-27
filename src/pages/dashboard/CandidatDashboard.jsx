@@ -1,10 +1,11 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import axiosInstance from '/api/axios';
 import { useAuth } from '../../contexts/AuthContext';
 import ChatModal from '../../components/Chat/ChatModal';
 import ProtectedRoute from '../../components/ProtectedRoute';
+import VotesStatsModal from '../../components/Candidat/VotesStatsModal';
 import ChatNotificationBell from '../../components/Chat/ChatNotificationBell';
 import { toast } from 'react-hot-toast';
 import {
@@ -34,10 +35,6 @@ import {
   alpha,
   useTheme,
   useMediaQuery,
-  CardActionArea,
-  Fade,
-  Grow,
-  Zoom,
   Tooltip,
   Badge,
   Fab,
@@ -45,22 +42,28 @@ import {
   DialogTitle,
   DialogContent,
   DialogActions,
-  List,
-  ListItem,
-  ListItemAvatar,
-  ListItemText,
   Slide,
   Skeleton,
   SpeedDial,
   SpeedDialAction,
   SpeedDialIcon,
+  TextField,
+  MenuItem,
+  Select,
+  FormControl,
+  InputLabel,
+  CircularProgress,
+  List,
+  ListItem,
+  ListItemText,
+  ListItemAvatar,
+  ListItemSecondaryAction,
 } from '@mui/material';
 import {
   EmojiEvents as TrophyIcon,
   HowToVote as VoteIcon,
   TrendingUp as TrendingIcon,
   Person as PersonIcon,
-  PlayArrow as PlayIcon,
   Visibility as ViewIcon,
   Share as ShareIcon,
   CalendarToday as CalendarIcon,
@@ -72,7 +75,6 @@ import {
   Chat as ChatIcon,
   School as SchoolIcon,
   Groups as GroupsIcon,
-  Videocam as VideocamIcon,
   Insights as InsightsIcon,
   Notifications as NotificationsIcon,
   OpenInNew as OpenInNewIcon,
@@ -80,20 +82,41 @@ import {
   Instagram as InstagramIcon,
   Twitter as TwitterIcon,
   WhatsApp as WhatsAppIcon,
-  Message as MessageIcon,
-  Forum as ForumIcon,
-  Comment as CommentIcon,
-  Sms as SmsIcon,
-  ThumbUp as ThumbUpIcon,
-  Email as EmailIcon,
-  Launch as LaunchIcon,
-  MoreVert as MoreVertIcon,
   Refresh as RefreshIcon,
   Download as DownloadIcon,
-  QrCode as QrCodeIcon,
-  Close as CloseIcon, // AJOUTÉ
-  ContentCopy as ContentCopyIcon, // AJOUTÉ
+  Close as CloseIcon,
+  ContentCopy as ContentCopyIcon,
+  FilterList as FilterIcon,
+  Search as SearchIcon,
+  BarChart as BarChartIcon,
+  PieChart as PieChartIcon,
+  Timeline as TimelineIcon,
+  People as PeopleIcon,
+  AttachMoney as MoneyIcon,
+  LocationOn as LocationIcon,
+  Phone as PhoneIcon,
+  Email as EmailIcon,
+  MoreVert as MoreVertIcon,
+  KeyboardArrowUp as ArrowUpIcon,
+  KeyboardArrowDown as ArrowDownIcon,
 } from '@mui/icons-material';
+import {
+  LineChart,
+  Line,
+  BarChart,
+  Bar,
+  PieChart,
+  Pie,
+  Cell,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip as RechartsTooltip,
+  Legend,
+  ResponsiveContainer,
+  AreaChart,
+  Area,
+} from 'recharts';
 
 // Palette de couleurs
 const PALETTE = {
@@ -144,9 +167,8 @@ const pulseAnimation = {
 const CandidatDashboard = () => {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
-  const isTablet = useMediaQuery(theme.breakpoints.down('lg'));
   const navigate = useNavigate();
-  const { user, logout } = useAuth();
+  const { user } = useAuth();
   
   // États
   const [activeTab, setActiveTab] = useState(0);
@@ -156,115 +178,93 @@ const CandidatDashboard = () => {
   const [shareDialogOpen, setShareDialogOpen] = useState(false);
   const [selectedCandidature, setSelectedCandidature] = useState(null);
   const [speedDialOpen, setSpeedDialOpen] = useState(false);
+  const [votesStatsOpen, setVotesStatsOpen] = useState(false);
+  const [selectedStatsEdition, setSelectedStatsEdition] = useState(null);
+  const [selectedStatsCategory, setSelectedStatsCategory] = useState(null);
+  
+  // États pour les filtres
+  const [filters, setFilters] = useState({
+    editionId: '',
+    categoryId: '',
+    dateFrom: '',
+    dateTo: '',
+    search: '',
+  });
+  
+  // États pour les graphiques
+  const [chartPeriod, setChartPeriod] = useState('7days');
+  const [chartType, setChartType] = useState('line');
 
-  // Récupérer les données avec gestion d'erreur améliorée
+  // Récupérer les données du dashboard
   const { 
-    data: candidatures, 
-    isLoading: candidaturesLoading, 
-    error: candidaturesError,
-    refetch: refetchCandidatures 
+    data: dashboardData, 
+    isLoading: dashboardLoading, 
+    error: dashboardError,
+    refetch: refetchDashboard 
   } = useQuery({
-    queryKey: ['mes-candidatures'],
+    queryKey: ['candidat-dashboard'],
     queryFn: async () => {
       try {
-        const response = await axiosInstance.get('/candidat/mes-candidatures');
-        return response.data.data || [];
+        const response = await axiosInstance.get('/candidat/dashboard/stats');
+        return response.data.data;
       } catch (error) {
-        console.error('Erreur chargement candidatures:', error);
-        return [];
+        console.error('Erreur chargement dashboard:', error);
+        throw error;
       }
     },
     refetchOnWindowFocus: false,
-    retry: 1,
   });
 
-  // Fonction pour obtenir les éditions ouvertes (route fictive - à adapter)
-  const fetchEditionsOuvertes = async () => {
-    try {
-      // Si cette route n'existe pas, utilisez une alternative
-      const response = await axiosInstance.get('/editions?status=ouvert');
-      return response.data.data || [];
-    } catch (error) {
-      console.log('Route editions-ouvertes non disponible, utilisation de données fictives');
-      // Données fictives pour démonstration
-      return [
-        {
-          id: 1,
-          nom: "Talents 2024",
-          annee: "2024",
-          numero_edition: "5",
-          description: "Concours annuel de talents",
-          date_fin_inscriptions: "2024-12-31",
-          categories: [
-            { id: 1, nom: "Musique" },
-            { id: 2, nom: "Danse" }
-          ]
-        }
-      ];
-    }
-  };
-
+  // Récupérer les votes avec filtres
   const { 
-    data: editionsOuvertes = [], 
-    isLoading: editionsLoading,
-    refetch: refetchEditions 
+    data: votesData, 
+    isLoading: votesLoading,
+    refetch: refetchVotes 
   } = useQuery({
-    queryKey: ['editions-suggestions'],
-    queryFn: fetchEditionsOuvertes,
-  });
-
-  // Fonction pour obtenir les statistiques (route fictive - à adapter)
-  const fetchStats = async () => {
-    try {
-      // Essayez différentes routes possibles
-      const routes = ['/candidat/stats', '/candidat/statistiques', '/stats/candidat'];
-      
-      for (const route of routes) {
-        try {
-          const response = await axiosInstance.get(route);
-          if (response.data) {
-            return response.data.data || {};
-          }
-        } catch (e) {
-          continue;
-        }
+    queryKey: ['candidat-votes', filters],
+    queryFn: async () => {
+      try {
+        const params = new URLSearchParams();
+        if (filters.editionId) params.append('edition_id', filters.editionId);
+        if (filters.categoryId) params.append('category_id', filters.categoryId);
+        if (filters.dateFrom) params.append('date_from', filters.dateFrom);
+        if (filters.dateTo) params.append('date_to', filters.dateTo);
+        if (filters.search) params.append('search', filters.search);
+        
+        const response = await axiosInstance.get(`/candidat/dashboard/votes?${params}`);
+        return response.data.data;
+      } catch (error) {
+        console.error('Erreur chargement votes:', error);
+        return { votes: { data: [] }, stats: {} };
       }
-      
-      // Si aucune route ne fonctionne, calculez les stats localement
-      return calculateLocalStats(candidatures || []);
-    } catch (error) {
-      console.log('Calcul des stats locales');
-      return calculateLocalStats(candidatures || []);
-    }
-  };
+    },
+    enabled: activeTab === 1, // Ne charger que quand l'onglet est actif
+  });
 
-  // Fonction pour calculer les stats localement
-  const calculateLocalStats = (candidaturesData) => {
-    const activeCandidatures = candidaturesData?.filter(c => 
-      ['validee', 'preselectionne', 'finaliste'].includes(c.statut)
-    ).length || 0;
-    
-    const totalVotes = candidaturesData?.reduce((sum, c) => sum + (c.nombre_votes || 0), 0) || 0;
-    
-    const activeCandidature = candidaturesData?.find(c => c.statut === 'validee');
-    
-    return {
-      candidatures_actives: activeCandidatures,
-      total_votes: totalVotes,
-      phase_actuelle: activeCandidature?.phase_actuelle || 1,
-      editions_ouvertes: editionsOuvertes?.length || 0,
-      total_candidatures: candidaturesData?.length || 0,
-    };
-  };
-
+  // Récupérer l'évolution des votes
   const { 
-    data: statsData = {}, 
-    isLoading: statsLoading,
-    refetch: refetchStats 
+    data: evolutionData, 
+    isLoading: evolutionLoading 
   } = useQuery({
-    queryKey: ['candidat-stats', candidatures],
-    queryFn: fetchStats,
-    enabled: !!candidatures, // Ne s'exécute que si candidatures est chargé
+    queryKey: ['votes-evolution', selectedStatsEdition, selectedStatsCategory, chartPeriod],
+    queryFn: async () => {
+      if (!selectedStatsEdition) return null;
+      
+      try {
+        const params = new URLSearchParams();
+        params.append('edition_id', selectedStatsEdition);
+        if (selectedStatsCategory) params.append('category_id', selectedStatsCategory);
+        params.append('period', chartPeriod === '7days' ? 'day' : 'month');
+        params.append('days', chartPeriod === '7days' ? 7 : 30);
+        
+        const response = await axiosInstance.get(`/candidat/dashboard/votes/evolution?${params}`);
+        return response.data.data;
+      } catch (error) {
+        console.error('Erreur chargement évolution:', error);
+        return null;
+      }
+    },
+    enabled: !!selectedStatsEdition,
   });
 
   // Fonctions utilitaires
@@ -275,49 +275,42 @@ const CandidatDashboard = () => {
         color: 'warning', 
         icon: <PendingIcon />, 
         bgColor: PALETTE.WARNING,
-        gradient: `linear-gradient(135deg, ${PALETTE.WARNING} 0%, #D97706 100%)`
       },
       'validee': { 
         label: 'Validée', 
         color: 'success', 
         icon: <CheckIcon />, 
         bgColor: PALETTE.SUCCESS,
-        gradient: `linear-gradient(135deg, ${PALETTE.SUCCESS} 0%, #047857 100%)`
       },
       'refusee': { 
         label: 'Refusée', 
         color: 'error', 
         icon: <CancelIcon />, 
         bgColor: PALETTE.ERROR,
-        gradient: `linear-gradient(135deg, ${PALETTE.ERROR} 0%, #DC2626 100%)`
       },
       'preselectionne': { 
         label: 'Présélectionné', 
         color: 'info', 
         icon: <TrendingIcon />, 
         bgColor: PALETTE.INFO,
-        gradient: `linear-gradient(135deg, ${PALETTE.INFO} 0%, #1D4ED8 100%)`
       },
       'elimine': { 
         label: 'Éliminé', 
         color: 'default', 
         icon: <CancelIcon />, 
         bgColor: PALETTE.GRAY_DARK,
-        gradient: `linear-gradient(135deg, ${PALETTE.GRAY_DARK} 0%, #4B5563 100%)`
       },
       'finaliste': { 
         label: 'Finaliste', 
         color: 'secondary', 
         icon: <TrophyIcon />, 
         bgColor: PALETTE.GOLD,
-        gradient: `linear-gradient(135deg, ${PALETTE.GOLD} 0%, ${PALETTE.GOLD_DARK} 100%)`
       },
       'gagnant': { 
         label: 'Gagnant', 
         color: 'success', 
         icon: <TrophyIcon />, 
         bgColor: PALETTE.SUCCESS,
-        gradient: `linear-gradient(135deg, ${PALETTE.SUCCESS} 0%, #065F46 100%)`
       },
     };
     return statusMap[statut] || { 
@@ -325,34 +318,35 @@ const CandidatDashboard = () => {
       color: 'default', 
       icon: <WarningIcon />, 
       bgColor: PALETTE.GRAY_DARK,
-      gradient: `linear-gradient(135deg, ${PALETTE.GRAY_DARK} 0%, #6B7280 100%)`
     };
   };
 
-  const getPhaseLabel = (phase) => {
-    const phases = {
-      1: 'Présélection',
-      2: 'Demi-finale',
-      3: 'Phase finale',
-      4: 'Grande finale',
-    };
-    return phases[phase] || `Phase ${phase}`;
+  const formatCurrency = (amount) => {
+    return new Intl.NumberFormat('fr-FR', {
+      style: 'currency',
+      currency: 'XOF',
+      minimumFractionDigits: 0,
+    }).format(amount);
   };
 
-  // Gestion du chat améliorée
+  const formatDate = (dateString) => {
+    return new Date(dateString).toLocaleDateString('fr-FR', {
+      day: 'numeric',
+      month: 'short',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+  };
+
+  // Gestion du chat
   const handleOpenChat = (categoryId, categoryName, candidature = null) => {
     if (!user) {
       toast.error('Veuillez vous connecter pour accéder au chat');
-      navigate('/login', { 
-        state: { 
-          from: '/dashboard',
-          message: 'Connectez-vous pour accéder aux discussions'
-        } 
-      });
+      navigate('/login');
       return;
     }
     
-    // Vérifier si le chat est disponible pour cette catégorie
     if (!categoryId) {
       toast.error('Catégorie non disponible pour le chat');
       return;
@@ -362,9 +356,6 @@ const CandidatDashboard = () => {
     setSelectedCategoryName(categoryName);
     setSelectedCandidature(candidature);
     setChatModalOpen(true);
-    
-    // Animation feedback
-    toast.success(`Ouverture du chat: ${categoryName}`);
   };
 
   const handleCloseChat = () => {
@@ -372,6 +363,13 @@ const CandidatDashboard = () => {
     setSelectedCategoryId(null);
     setSelectedCategoryName('');
     setSelectedCandidature(null);
+  };
+
+  // Gestion des statistiques de votes
+  const handleOpenVotesStats = (editionId, categoryId = null) => {
+    setSelectedStatsEdition(editionId);
+    setSelectedStatsCategory(categoryId);
+    setVotesStatsOpen(true);
   };
 
   // Gestion du partage
@@ -393,85 +391,15 @@ const CandidatDashboard = () => {
     }
   };
 
-  // Données de statistiques améliorées
-  const stats = [
-    {
-      title: 'Candidatures actives',
-      value: statsData.candidatures_actives || 0,
-      icon: <PersonIcon />,
-      color: PALETTE.INFO,
-      gradient: `linear-gradient(135deg, ${PALETTE.INFO} 0%, #1D4ED8 100%)`,
-      label: 'En compétition',
-      subValue: statsData.total_candidatures || 0,
-      subLabel: 'Total',
-    },
-    {
-      title: 'Total des votes',
-      value: statsData.total_votes || 0,
-      icon: <VoteIcon />,
-      color: PALETTE.SUCCESS,
-      gradient: `linear-gradient(135deg, ${PALETTE.SUCCESS} 0%, #047857 100%)`,
-      label: 'Votes reçus',
-      subValue: 'Top 10%',
-      subLabel: 'Classement',
-    },
-    {
-      title: 'Phase actuelle',
-      value: getPhaseLabel(statsData.phase_actuelle || 1),
-      icon: <TrendingIcon />,
-      color: PALETTE.GOLD,
-      gradient: `linear-gradient(135deg, ${PALETTE.GOLD} 0%, ${PALETTE.GOLD_DARK} 100%)`,
-      label: 'Avancement',
-      subValue: `${Math.round(((statsData.phase_actuelle || 1) / 4) * 100)}%`,
-      subLabel: 'Progression',
-    },
-    {
-      title: 'Éditions ouvertes',
-      value: statsData.editions_ouvertes || 0,
-      icon: <TrophyIcon />,
-      color: PALETTE.WARNING,
-      gradient: `linear-gradient(135deg, ${PALETTE.WARNING} 0%, #D97706 100%)`,
-      label: 'Opportunités',
-      subValue: statsData.candidatures_actives || 0,
-      subLabel: 'Actives',
-    },
-  ];
-
-  // Candidature active principale
-  const activeCandidature = candidatures?.find(c => c.statut === 'validee');
-
   // Fonction de rafraîchissement
   const handleRefresh = () => {
-    refetchCandidatures();
-    refetchEditions();
-    refetchStats();
+    refetchDashboard();
+    if (activeTab === 1) refetchVotes();
     toast.success('Données rafraîchies !');
   };
 
   // Actions pour le SpeedDial
   const actions = [
-    { 
-      icon: <ChatIcon />, 
-      name: 'Chat principal', 
-      onClick: () => {
-        if (activeCandidature) {
-          handleOpenChat(activeCandidature.category_id, activeCandidature.category?.nom, activeCandidature);
-        } else {
-          toast.error('Aucune candidature active');
-        }
-      } 
-    },
-    { 
-      icon: <ShareIcon />, 
-      name: 'Partager profil', 
-      onClick: () => {
-        if (activeCandidature) {
-          handleShare(activeCandidature);
-        } else {
-          toast.error('Aucune candidature active à partager');
-        }
-      } 
-    },
     { 
       icon: <RefreshIcon />, 
       name: 'Rafraîchir', 
@@ -480,12 +408,87 @@ const CandidatDashboard = () => {
     { 
       icon: <DownloadIcon />, 
       name: 'Exporter', 
-      onClick: () => toast.info('Fonctionnalité à venir') 
+      onClick: () => {
+        if (dashboardData?.candidatures?.[0]) {
+          window.open(`/candidat/dashboard/export/votes?edition_id=${dashboardData.candidatures[0].edition_id}`, '_blank');
+        } else {
+          toast.error('Aucune donnée à exporter');
+        }
+      } 
+    },
+    { 
+      icon: <ShareIcon />, 
+      name: 'Partager', 
+      onClick: () => {
+        if (dashboardData?.candidatures?.[0]) {
+          handleShare(dashboardData.candidatures[0]);
+        } else {
+          toast.error('Aucune candidature active à partager');
+        }
+      } 
     },
   ];
 
-  // Loading state amélioré
-  if (candidaturesLoading) {
+  // Données de statistiques
+  const statsCards = [
+    {
+      title: 'Total des votes',
+      value: dashboardData?.global_stats?.total_votes || 0,
+      icon: <VoteIcon />,
+      color: PALETTE.SUCCESS,
+      label: 'Votes reçus',
+      subValue: formatCurrency(dashboardData?.global_stats?.total_amount || 0),
+      subLabel: 'Montant total',
+      onClick: () => setActiveTab(1),
+    },
+    {
+      title: 'Candidatures actives',
+      value: dashboardData?.global_stats?.active_candidatures || 0,
+      icon: <PersonIcon />,
+      color: PALETTE.INFO,
+      label: 'En compétition',
+      subValue: dashboardData?.global_stats?.total_candidatures || 0,
+      subLabel: 'Total',
+      onClick: () => setActiveTab(0),
+    },
+    {
+      title: 'Votants uniques',
+      value: dashboardData?.global_stats?.unique_voters || 0,
+      icon: <PeopleIcon />,
+      color: PALETTE.GOLD,
+      label: 'Personnes',
+      subValue: dashboardData?.global_stats?.vote_avg || 0,
+      subLabel: 'Moyenne/vote',
+    },
+    {
+      title: 'Classement moyen',
+      value: `#${dashboardData?.global_stats?.average_ranking || '-'}`,
+      icon: <TrophyIcon />,
+      color: PALETTE.RED_DARK,
+      label: 'Position',
+      subValue: `${dashboardData?.ranking?.percentage || 0}%`,
+      subLabel: 'Top',
+      onClick: () => dashboardData?.ranking && handleOpenVotesStats(
+        dashboardData.candidatures[0]?.edition_id,
+        dashboardData.candidatures[0]?.category_id
+      ),
+    },
+  ];
+
+  // Préparer les données pour les graphiques
+  const prepareChartData = () => {
+    if (!evolutionData?.evolution) return [];
+    
+    return evolutionData.evolution.map(item => ({
+      name: item.label,
+      votes: item.votes,
+      amount: item.amount,
+      date: item.date,
+    }));
+  };
+
+  // Loading state
+  if (dashboardLoading) {
     return (
       <Container maxWidth="xl" sx={{ mt: 4, mb: 6 }}>
         <Box sx={{ 
@@ -496,22 +499,17 @@ const CandidatDashboard = () => {
           flexDirection: 'column', 
           gap: 3 
         }}>
-          <Box sx={{ width: '100%', maxWidth: 400 }}>
-            <Skeleton variant="rounded" height={200} sx={{ mb: 3, borderRadius: 4 }} />
-            <Skeleton variant="rounded" height={100} sx={{ mb: 2, borderRadius: 3 }} />
-            <Skeleton variant="rounded" height={100} sx={{ mb: 2, borderRadius: 3 }} />
-            <Skeleton variant="rounded" height={100} sx={{ borderRadius: 3 }} />
-          </Box>
+          <CircularProgress size={60} sx={{ color: PALETTE.GOLD }} />
           <Typography variant="h6" color={PALETTE.BROWN}>
-            Chargement de vos candidatures...
+            Chargement de votre dashboard...
           </Typography>
         </Box>
       </Container>
     );
   }
 
-  // Error state amélioré
-  if (candidaturesError && !candidatures) {
+  // Error state
+  if (dashboardError) {
     return (
       <Container maxWidth="xl" sx={{ mt: 4, mb: 6 }}>
         <Alert 
@@ -521,12 +519,6 @@ const CandidatDashboard = () => {
             borderRadius: 3,
             background: `linear-gradient(135deg, ${PALETTE.ERROR} 0%, ${PALETTE.RED_DARK} 100%)`,
             color: PALETTE.WHITE,
-            animation: 'shake 0.5s ease-in-out',
-            '@keyframes shake': {
-              '0%, 100%': { transform: 'translateX(0)' },
-              '25%': { transform: 'translateX(-5px)' },
-              '75%': { transform: 'translateX(5px)' },
-            }
           }}
           action={
             <Button 
@@ -543,20 +535,9 @@ const CandidatDashboard = () => {
             Erreur de chargement
           </Typography>
           <Typography variant="body2">
-            {candidaturesError.message || 'Impossible de charger vos candidatures.'}
+            {dashboardError.message || 'Impossible de charger vos données.'}
           </Typography>
         </Alert>
-        <Button 
-          variant="contained" 
-          onClick={() => navigate('/postuler')}
-          sx={{
-            background: `linear-gradient(135deg, ${PALETTE.GOLD} 0%, ${PALETTE.GOLD_DARK} 100%)`,
-            color: PALETTE.BLACK,
-            fontWeight: 'bold',
-          }}
-        >
-          Postuler à une nouvelle édition
-        </Button>
       </Container>
     );
   }
@@ -569,257 +550,188 @@ const CandidatDashboard = () => {
       position: 'relative',
       minHeight: '100vh',
     }}>
-      {/* Header avec bienvenue amélioré */}
-      <Fade in={true} timeout={800}>
-        <Paper 
-          sx={{ 
-            p: { xs: 2, sm: 3, md: 4, lg: 6 },
-            mb: 4,
-            borderRadius: { xs: 3, md: 4 },
-            background: `linear-gradient(135deg, ${PALETTE.RED_DARK} 0%, ${PALETTE.BROWN} 100%)`,
-            color: PALETTE.WHITE,
-            position: 'relative',
-            overflow: 'hidden',
-            boxShadow: '0 20px 60px rgba(139, 0, 0, 0.3)',
-            ...cardHoverAnimation,
-          }}
-        >
-          {/* Éléments décoratifs animés */}
-          <Box sx={{
-            position: 'absolute',
-            top: -50,
-            right: -50,
-            width: 200,
-            height: 200,
-            borderRadius: '50%',
-            background: `radial-gradient(circle at center, ${alpha(PALETTE.GOLD, 0.2)} 0%, transparent 70%)`,
-            animation: 'float 6s ease-in-out infinite',
-            '@keyframes float': {
-              '0%, 100%': { transform: 'translateY(0px)' },
-              '50%': { transform: 'translateY(-20px)' },
-            }
-          }} />
-          
-          <Grid container spacing={3} alignItems="center">
-            <Grid item xs={12} md={8}>
-              <Box sx={{ position: 'relative' }}>
-                <Typography variant="h2" fontWeight="bold" sx={{ 
-                  fontSize: { xs: 24, sm: 32, md: 40, lg: 48 },
-                  mb: 2,
-                  textShadow: '2px 2px 4px rgba(0,0,0,0.3)',
-                  background: 'linear-gradient(45deg, #FFD700, #FFFFFF)',
-                  WebkitBackgroundClip: 'text',
-                  WebkitTextFillColor: 'transparent',
-                  backgroundClip: 'text',
-                }}>
-                  Bonjour, {user?.prenoms} ! 👋
-                </Typography>
-                
-                <Typography variant="h6" sx={{ 
-                  opacity: 0.9, 
-                  mb: 4,
-                  fontSize: { xs: '0.9rem', sm: '1rem', md: '1.1rem' },
-                  lineHeight: 1.6,
-                }}>
-                  Bienvenue dans votre espace candidat. Suivez l'avancement de vos candidatures, 
-                  recevez des votes et montez sur le podium !
-                </Typography>
-                
-                {activeCandidature ? (
-                  <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} alignItems={{ xs: 'flex-start', sm: 'center' }}>
-                    <Chip
-                      label={getPhaseLabel(activeCandidature.phase_actuelle)}
-                      sx={{
-                        bgcolor: PALETTE.GOLD,
-                        color: PALETTE.BLACK,
-                        fontWeight: 'bold',
-                        fontSize: { xs: '0.75rem', sm: '0.875rem' },
-                        height: { xs: 32, sm: 36 },
-                        '& .MuiChip-label': { px: 2 },
-                        ...pulseAnimation,
-                      }}
-                    />
-                    <Typography variant="body1" sx={{ opacity: 0.9 }}>
-                      En compétition dans <strong>{activeCandidature.edition?.nom}</strong>
-                    </Typography>
-                  </Stack>
-                ) : (
-                  <Button
-                    variant="contained"
-                    endIcon={<ArrowIcon />}
-                    href="/postuler"
+      {/* Header avec bienvenue */}
+      <Paper 
+        sx={{ 
+          p: { xs: 2, sm: 3, md: 4 },
+          mb: 4,
+          borderRadius: { xs: 3, md: 4 },
+          background: `linear-gradient(135deg, ${PALETTE.RED_DARK} 0%, ${PALETTE.BROWN} 100%)`,
+          color: PALETTE.WHITE,
+          position: 'relative',
+          overflow: 'hidden',
+          boxShadow: '0 20px 60px rgba(139, 0, 0, 0.3)',
+          ...cardHoverAnimation,
+        }}
+      >
+        <Grid container spacing={3} alignItems="center">
+          <Grid item xs={12} md={8}>
+            <Box sx={{ position: 'relative' }}>
+              <Typography variant="h2" fontWeight="bold" sx={{ 
+                fontSize: { xs: 24, sm: 32, md: 40, lg: 48 },
+                mb: 2,
+                background: 'linear-gradient(45deg, #FFD700, #FFFFFF)',
+                WebkitBackgroundClip: 'text',
+                WebkitTextFillColor: 'transparent',
+                backgroundClip: 'text',
+              }}>
+                Bonjour, {user?.prenoms} !
+              </Typography>
+              
+              <Typography variant="h6" sx={{ 
+                opacity: 0.9, 
+                mb: 4,
+                fontSize: { xs: '0.9rem', sm: '1rem', md: '1.1rem' },
+                lineHeight: 1.6,
+              }}>
+                Bienvenue dans votre espace candidat. Suivez vos votes, 
+                votre classement et gérez vos candidatures.
+              </Typography>
+              
+              {dashboardData?.candidatures?.[0] ? (
+                <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} alignItems={{ xs: 'flex-start', sm: 'center' }}>
+                  <Chip
+                    label={`${dashboardData.candidatures[0].edition?.nom} - ${dashboardData.candidatures[0].category?.nom}`}
                     sx={{
-                      background: `linear-gradient(135deg, ${PALETTE.GOLD} 0%, ${PALETTE.GOLD_DARK} 100%)`,
+                      bgcolor: PALETTE.GOLD,
                       color: PALETTE.BLACK,
                       fontWeight: 'bold',
-                      px: 4,
-                      py: 1.5,
-                      borderRadius: 3,
-                      mt: 2,
-                      '&:hover': {
-                        background: `linear-gradient(135deg, ${PALETTE.GOLD_LIGHT} 0%, ${PALETTE.GOLD} 100%)`,
-                        transform: 'translateY(-2px)',
-                      },
-                      transition: 'all 0.3s ease',
+                      fontSize: { xs: '0.75rem', sm: '0.875rem' },
+                      height: { xs: 32, sm: 36 },
+                      '& .MuiChip-label': { px: 2 },
                     }}
-                  >
-                    Postuler à une édition
-                  </Button>
-                )}
-              </Box>
-            </Grid>
-            
-            <Grid item xs={12} md={4} sx={{ textAlign: { xs: 'center', md: 'right' } }}>
-              <Box sx={{ position: 'relative', display: 'inline-block' }}>
-                <Avatar
-                  src={user?.photo_url}
+                  />
+                  <Typography variant="body1" sx={{ opacity: 0.9 }}>
+                    {dashboardData.global_stats?.total_votes || 0} votes reçus
+                  </Typography>
+                </Stack>
+              ) : (
+                <Button
+                  variant="contained"
+                  endIcon={<ArrowIcon />}
+                  href="/postuler"
                   sx={{
-                    width: { xs: 80, sm: 100, md: 120, lg: 140 },
-                    height: { xs: 80, sm: 100, md: 120, lg: 140 },
-                    border: `4px solid ${PALETTE.GOLD}`,
-                    boxShadow: '0 10px 30px rgba(0,0,0,0.3)',
-                    transition: 'transform 0.3s ease',
+                    background: `linear-gradient(135deg, ${PALETTE.GOLD} 0%, ${PALETTE.GOLD_DARK} 100%)`,
+                    color: PALETTE.BLACK,
+                    fontWeight: 'bold',
+                    px: 4,
+                    py: 1.5,
+                    borderRadius: 3,
+                    mt: 2,
                     '&:hover': {
-                      transform: 'scale(1.05)',
-                    }
+                      background: `linear-gradient(135deg, ${PALETTE.GOLD_LIGHT} 0%, ${PALETTE.GOLD} 100%)`,
+                      transform: 'translateY(-2px)',
+                    },
                   }}
                 >
-                  {user?.prenoms?.[0]}{user?.nom?.[0]}
-                </Avatar>
-                <Box sx={{
-                  position: 'absolute',
-                  bottom: 8,
-                  right: 8,
-                  bgcolor: PALETTE.SUCCESS,
-                  width: 16,
-                  height: 16,
-                  borderRadius: '50%',
-                  border: `2px solid ${PALETTE.WHITE}`,
-                  animation: 'pulse 2s infinite',
-                }} />
-              </Box>
-              
-              {/* Notifications et bouton chat */}
-              <Box sx={{ mt: 3, display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 2, flexWrap: 'wrap' }}>
-                <ChatNotificationBell />
-                
-                {/* Bouton Chat principal */}
-                {activeCandidature && (
-                  <Tooltip title="Ouvrir le chat de votre catégorie">
-                    <IconButton
-                      onClick={() => handleOpenChat(
-                        activeCandidature.category_id, 
-                        activeCandidature.category?.nom, 
-                        activeCandidature
-                      )}
-                      sx={{
-                        bgcolor: PALETTE.CHAT_PRIMARY,
-                        color: PALETTE.WHITE,
-                        '&:hover': {
-                          bgcolor: PALETTE.CHAT_SECONDARY,
-                          transform: 'rotate(15deg)',
-                        },
-                        transition: 'all 0.3s ease',
-                        ...pulseAnimation,
-                      }}
-                    >
-                      <ChatIcon />
-                    </IconButton>
-                  </Tooltip>
-                )}
-                
-                <Typography variant="caption" sx={{ opacity: 0.8 }}>
-                  Connecté en tant que {user?.prenoms}
-                </Typography>
-              </Box>
-            </Grid>
+                  Postuler à une édition
+                </Button>
+              )}
+            </Box>
           </Grid>
-        </Paper>
-      </Fade>
-
-      {/* Statistiques améliorées */}
-      <Grid container spacing={2} sx={{ mb: 4 }}>
-        {stats.map((stat, index) => (
-          <Grid item xs={12} sm={6} md={3} key={index}>
-            <Grow in={true} timeout={index * 200}>
-              <Card 
-                sx={{ 
-                  height: '100%',
-                  background: stat.gradient,
-                  color: PALETTE.WHITE,
-                  borderRadius: 3,
-                  overflow: 'hidden',
-                  position: 'relative',
-                  ...cardHoverAnimation,
-                  cursor: 'pointer',
-                  '&:hover .stat-icon': {
-                    transform: 'scale(1.2) rotate(10deg)',
-                  }
+          
+          <Grid item xs={12} md={4} sx={{ textAlign: { xs: 'center', md: 'right' } }}>
+            <Box sx={{ position: 'relative', display: 'inline-block' }}>
+              <Avatar
+                src={user?.photo_url}
+                sx={{
+                  width: { xs: 80, sm: 100, md: 120 },
+                  height: { xs: 80, sm: 100, md: 120 },
+                  border: `4px solid ${PALETTE.GOLD}`,
+                  boxShadow: '0 10px 30px rgba(0,0,0,0.3)',
                 }}
               >
-                <CardContent sx={{ p: 2, position: 'relative', zIndex: 1 }}>
-                  <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 1 }}>
-                    <Box>
-                      <Typography variant="h2" fontWeight="bold" sx={{ 
-                        fontSize: { xs: 28, sm: 32, md: 36 }, 
-                        textShadow: '2px 2px 4px rgba(0,0,0,0.2)',
-                        lineHeight: 1,
-                      }}>
-                        {stat.value}
-                      </Typography>
-                      <Typography variant="caption" sx={{ opacity: 0.9, display: 'block', mt: 0.5 }}>
-                        {stat.title}
-                      </Typography>
-                    </Box>
-                    <Box sx={{
-                      width: { xs: 36, sm: 40, md: 44 },
-                      height: { xs: 36, sm: 40, md: 44 },
-                      borderRadius: '50%',
-                      background: 'rgba(255,255,255,0.2)',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      backdropFilter: 'blur(5px)',
-                      transition: 'transform 0.3s ease',
-                      className: 'stat-icon'
+                {user?.prenoms?.[0]}{user?.nom?.[0]}
+              </Avatar>
+            </Box>
+            
+            <Box sx={{ mt: 3, display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 2 }}>
+              <ChatNotificationBell />
+              <Typography variant="caption" sx={{ opacity: 0.8 }}>
+                Connecté en tant que {user?.prenoms}
+              </Typography>
+            </Box>
+          </Grid>
+        </Grid>
+      </Paper>
+
+      {/* Cartes de statistiques */}
+      <Grid container spacing={2} sx={{ mb: 4 }}>
+        {statsCards.map((stat, index) => (
+          <Grid item xs={12} sm={6} md={3} key={index}>
+            <Card 
+              sx={{ 
+                height: '100%',
+                background: `linear-gradient(135deg, ${stat.color} 0%, ${alpha(stat.color, 0.7)} 100%)`,
+                color: PALETTE.WHITE,
+                borderRadius: 3,
+                overflow: 'hidden',
+                position: 'relative',
+                ...cardHoverAnimation,
+                cursor: stat.onClick ? 'pointer' : 'default',
+              }}
+              onClick={stat.onClick}
+            >
+              <CardContent sx={{ p: 2, position: 'relative', zIndex: 1 }}>
+                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 1 }}>
+                  <Box>
+                    <Typography variant="h2" fontWeight="bold" sx={{ 
+                      fontSize: { xs: 28, sm: 32, md: 36 }, 
+                      textShadow: '2px 2px 4px rgba(0,0,0,0.2)',
+                      lineHeight: 1,
                     }}>
-                      {React.cloneElement(stat.icon, { sx: { fontSize: { xs: 20, sm: 22, md: 24 } } })}
-                    </Box>
+                      {stat.value}
+                    </Typography>
+                    <Typography variant="caption" sx={{ opacity: 0.9, display: 'block', mt: 0.5 }}>
+                      {stat.title}
+                    </Typography>
                   </Box>
-                  
-                  <Box sx={{ mt: 1.5 }}>
-                    <Chip
-                      label={stat.label}
-                      size="small"
-                      sx={{ 
-                        bgcolor: 'rgba(255,255,255,0.2)',
-                        color: PALETTE.WHITE,
-                        fontWeight: 'medium',
-                        mb: 0.5
-                      }}
-                    />
-                    {stat.subValue && (
-                      <Typography variant="caption" sx={{ 
-                        opacity: 0.8, 
-                        display: 'flex', 
-                        alignItems: 'center', 
-                        gap: 0.5,
-                        fontSize: '0.7rem'
-                      }}>
-                        <span style={{ fontWeight: 'bold' }}>{stat.subValue}</span>
-                        <span>•</span>
-                        <span>{stat.subLabel}</span>
-                      </Typography>
-                    )}
+                  <Box sx={{
+                    width: { xs: 36, sm: 40, md: 44 },
+                    height: { xs: 36, sm: 40, md: 44 },
+                    borderRadius: '50%',
+                    background: 'rgba(255,255,255,0.2)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    backdropFilter: 'blur(5px)',
+                  }}>
+                    {React.cloneElement(stat.icon, { sx: { fontSize: { xs: 20, sm: 22, md: 24 } } })}
                   </Box>
-                </CardContent>
-              </Card>
-            </Grow>
+                </Box>
+                
+                <Box sx={{ mt: 1.5 }}>
+                  <Chip
+                    label={stat.label}
+                    size="small"
+                    sx={{ 
+                      bgcolor: 'rgba(255,255,255,0.2)',
+                      color: PALETTE.WHITE,
+                      fontWeight: 'medium',
+                      mb: 0.5
+                    }}
+                  />
+                  {stat.subValue && (
+                    <Typography variant="caption" sx={{ 
+                      opacity: 0.8, 
+                      display: 'flex', 
+                      alignItems: 'center', 
+                      gap: 0.5,
+                      fontSize: '0.7rem'
+                    }}>
+                      <span style={{ fontWeight: 'bold' }}>{stat.subValue}</span>
+                      <span>•</span>
+                      <span>{stat.subLabel}</span>
+                    </Typography>
+                  )}
+                </Box>
+              </CardContent>
+            </Card>
           </Grid>
         ))}
       </Grid>
 
-      {/* Tabs principales améliorées */}
+      {/* Tabs principales */}
       <Card sx={{ 
         borderRadius: { xs: 2, sm: 3, md: 4 }, 
         overflow: 'hidden', 
@@ -831,7 +743,6 @@ const CandidatDashboard = () => {
             borderBottom: 1, 
             borderColor: 'divider',
             background: `linear-gradient(135deg, ${PALETTE.BROWN}05 0%, ${PALETTE.RED_DARK}02 100%)`,
-            backdropFilter: 'blur(10px)',
           }}>
             <Tabs
               value={activeTab}
@@ -849,9 +760,6 @@ const CandidatDashboard = () => {
                   '&.Mui-selected': {
                     color: PALETTE.RED_DARK,
                   },
-                  '&:hover': {
-                    color: PALETTE.GOLD,
-                  }
                 },
                 '& .MuiTabs-indicator': {
                   backgroundColor: PALETTE.GOLD,
@@ -866,947 +774,597 @@ const CandidatDashboard = () => {
                 iconPosition="start" 
               />
               <Tab 
-                label="Votes & Classement" 
+                label="Votes & Statistiques" 
                 icon={<VoteIcon />} 
                 iconPosition="start" 
               />
               <Tab 
-                label="Prochaines étapes" 
-                icon={<TrendingIcon />} 
+                label="Classement" 
+                icon={<TrophyIcon />} 
                 iconPosition="start" 
               />
               <Tab 
-                label="Éditions suggérées" 
-                icon={<TrophyIcon />} 
+                label="Paiements" 
+                icon={<MoneyIcon />} 
                 iconPosition="start" 
               />
             </Tabs>
           </Box>
 
-          {/* Contenu des tabs amélioré */}
+          {/* Contenu des tabs */}
           <Box sx={{ p: { xs: 1.5, sm: 2.5, md: 3 } }}>
-            {/* Tab 1: Mes Candidatures - Amélioré */}
+            
+            {/* Tab 1: Mes Candidatures */}
             {activeTab === 0 && (
-              <Zoom in={true} timeout={500}>
-                <Box>
-                  {candidatures?.length > 0 ? (
-                    <TableContainer 
-                      component={Paper} 
-                      variant="outlined" 
-                      sx={{ 
-                        borderRadius: 3,
-                        overflow: 'auto',
-                        maxHeight: { xs: 500, md: 600 },
-                        '&::-webkit-scrollbar': {
-                          width: '8px',
-                        },
-                        '&::-webkit-scrollbar-track': {
-                          background: `${PALETTE.GRAY_LIGHT}`,
-                          borderRadius: '4px',
-                        },
-                        '&::-webkit-scrollbar-thumb': {
-                          background: `${PALETTE.GOLD}`,
-                          borderRadius: '4px',
-                          '&:hover': {
-                            background: `${PALETTE.GOLD_DARK}`,
-                          }
-                        }
-                      }}
-                    >
-                      <Table stickyHeader>
-                        <TableHead sx={{ bgcolor: `${PALETTE.GOLD}10` }}>
-                          <TableRow>
-                            <TableCell sx={{ fontWeight: 'bold', color: PALETTE.BROWN, minWidth: 150 }}>Édition</TableCell>
-                            <TableCell sx={{ fontWeight: 'bold', color: PALETTE.BROWN, minWidth: 120 }}>Catégorie</TableCell>
-                            <TableCell sx={{ fontWeight: 'bold', color: PALETTE.BROWN, minWidth: 100 }}>Date</TableCell>
-                            <TableCell sx={{ fontWeight: 'bold', color: PALETTE.BROWN, minWidth: 120 }}>Phase</TableCell>
-                            <TableCell sx={{ fontWeight: 'bold', color: PALETTE.BROWN, minWidth: 120 }}>Statut</TableCell>
-                            <TableCell sx={{ fontWeight: 'bold', color: PALETTE.BROWN, minWidth: 100 }}>Votes</TableCell>
-                            <TableCell sx={{ fontWeight: 'bold', color: PALETTE.BROWN, minWidth: 150 }}>Actions</TableCell>
-                          </TableRow>
-                        </TableHead>
-                        <TableBody>
-                          {candidatures.map((candidature) => {
-                            const statutInfo = getStatutInfo(candidature.statut);
-                            return (
-                              <TableRow 
-                                key={candidature.id} 
-                                hover
-                                sx={{ 
-                                  '&:hover': { 
-                                    bgcolor: `${PALETTE.GOLD}05`,
-                                    transform: 'scale(1.002)',
-                                  },
-                                  '&:last-child td, &:last-child th': { border: 0 },
-                                  transition: 'all 0.2s ease',
-                                  cursor: 'pointer',
-                                }}
-                              >
-                                <TableCell onClick={() => navigate(`/candidature/${candidature.id}`)}>
-                                  <Typography variant="body2" fontWeight="medium">
-                                    {candidature.edition?.nom}
-                                  </Typography>
-                                  <Typography variant="caption" color="text.secondary">
-                                    {candidature.edition?.annee}
-                                  </Typography>
-                                </TableCell>
-                                
-                                <TableCell>
-                                  <Chip
-                                    label={candidature.category?.nom || 'Non spécifiée'}
-                                    size="small"
-                                    sx={{ 
-                                      bgcolor: `${PALETTE.INFO}20`,
-                                      color: PALETTE.INFO,
-                                      fontWeight: 'medium',
-                                      cursor: 'pointer',
-                                      '&:hover': {
-                                        bgcolor: `${PALETTE.INFO}30`,
-                                        transform: 'translateY(-2px)',
-                                      },
-                                      transition: 'all 0.2s ease',
-                                    }}
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      if (candidature.category_id) {
-                                        handleOpenChat(candidature.category?.id, candidature.category?.nom, candidature);
-                                      } else {
-                                        toast.error('Catégorie non disponible pour le chat');
-                                      }
-                                    }}
-                                    icon={<ChatIcon fontSize="small" />}
-                                  />
-                                </TableCell>
-                                
-                                <TableCell>
-                                  {candidature.created_at ? 
-                                    new Date(candidature.created_at).toLocaleDateString('fr-FR') : 
-                                    'Non définie'
-                                  }
-                                </TableCell>
-                                
-                                <TableCell>
-                                  <Chip
-                                    label={getPhaseLabel(candidature.phase_actuelle)}
-                                    size="small"
-                                    variant="outlined"
-                                    sx={{ 
-                                      borderColor: PALETTE.GOLD,
-                                      color: PALETTE.BROWN,
-                                      '&:hover': {
-                                        bgcolor: `${PALETTE.GOLD}10`,
-                                      }
-                                    }}
-                                  />
-                                </TableCell>
-                                
-                                <TableCell>
+              <Box>
+                {dashboardData?.candidatures?.length > 0 ? (
+                  <Grid container spacing={3}>
+                    {dashboardData.candidatures.map((candidature) => {
+                      const statutInfo = getStatutInfo(candidature.statut);
+                      return (
+                        <Grid item xs={12} md={6} key={candidature.id}>
+                          <Card sx={{ height: '100%', borderRadius: 3 }}>
+                            <CardContent>
+                              <Stack spacing={2}>
+                                <Stack direction="row" justifyContent="space-between" alignItems="flex-start">
+                                  <Box>
+                                    <Typography variant="h6" fontWeight="bold">
+                                      {candidature.edition?.nom}
+                                    </Typography>
+                                    <Typography variant="body2" color="text.secondary">
+                                      {candidature.category?.nom}
+                                    </Typography>
+                                  </Box>
                                   <Chip
                                     icon={statutInfo.icon}
                                     label={statutInfo.label}
-                                    size="small"
                                     sx={{
-                                      background: statutInfo.gradient,
+                                      background: statutInfo.bgColor,
                                       color: PALETTE.WHITE,
                                       fontWeight: 'bold',
-                                      boxShadow: '0 2px 8px rgba(0,0,0,0.1)',
                                     }}
                                   />
-                                </TableCell>
+                                </Stack>
                                 
-                                <TableCell>
-                                  <Stack direction="row" alignItems="center" spacing={0.5}>
-                                    <VoteIcon sx={{ fontSize: 16, color: PALETTE.GOLD }} />
+                                <Divider />
+                                
+                                <Stack spacing={1}>
+                                  <Stack direction="row" justifyContent="space-between">
+                                    <Typography variant="body2" color="text.secondary">
+                                      Votes
+                                    </Typography>
                                     <Typography variant="body2" fontWeight="bold">
                                       {candidature.nombre_votes || 0}
                                     </Typography>
                                   </Stack>
-                                </TableCell>
-                                
-                                <TableCell>
-                                  <Stack direction="row" spacing={0.5} flexWrap="wrap">
-                                    {/* Bouton Chat amélioré */}
-                                    {candidature.category_id && (
-                                      <Tooltip title="Ouvrir le chat">
-                                        <IconButton
-                                          size="small"
-                                          onClick={(e) => {
-                                            e.stopPropagation();
-                                            handleOpenChat(candidature.category?.id, candidature.category?.nom, candidature);
-                                          }}
-                                          sx={{ 
-                                            color: PALETTE.CHAT_PRIMARY,
-                                            bgcolor: `${PALETTE.CHAT_PRIMARY}10`,
-                                            '&:hover': {
-                                              bgcolor: `${PALETTE.CHAT_PRIMARY}20`,
-                                              transform: 'rotate(15deg) scale(1.1)',
-                                            },
-                                            transition: 'all 0.3s ease',
-                                          }}
-                                        >
-                                          <ChatIcon fontSize="small" />
-                                        </IconButton>
-                                      </Tooltip>
-                                    )}
-                                    
-                                    {candidature.video_url && (
-                                      <Tooltip title="Voir la vidéo">
-                                        <IconButton
-                                          size="small"
-                                          onClick={(e) => {
-                                            e.stopPropagation();
-                                            window.open(candidature.video_url, '_blank');
-                                          }}
-                                          sx={{ 
-                                            color: PALETTE.GOLD,
-                                            bgcolor: `${PALETTE.GOLD}10`,
-                                            '&:hover': {
-                                              bgcolor: `${PALETTE.GOLD}20`,
-                                              transform: 'scale(1.1)',
-                                            },
-                                            transition: 'all 0.3s ease',
-                                          }}
-                                        >
-                                          <PlayIcon fontSize="small" />
-                                        </IconButton>
-                                      </Tooltip>
-                                    )}
-                                    
-                                    <Tooltip title="Partager">
-                                      <IconButton
-                                        size="small"
-                                        sx={{ 
-                                          color: PALETTE.INFO,
-                                          bgcolor: `${PALETTE.INFO}10`,
-                                          '&:hover': {
-                                            bgcolor: `${PALETTE.INFO}20`,
-                                            transform: 'scale(1.1)',
-                                          },
-                                          transition: 'all 0.3s ease',
-                                        }}
-                                        onClick={(e) => {
-                                          e.stopPropagation();
-                                          handleShare(candidature);
-                                        }}
-                                      >
-                                        <ShareIcon fontSize="small" />
-                                      </IconButton>
-                                    </Tooltip>
-                                    
-                                    {candidature.statut === 'refusee' && candidature.motif_refus && (
-                                      <Tooltip title="Voir le motif de refus">
-                                        <IconButton
-                                          size="small"
-                                          sx={{ 
-                                            color: PALETTE.ERROR,
-                                            bgcolor: `${PALETTE.ERROR}10`,
-                                            '&:hover': {
-                                              bgcolor: `${PALETTE.ERROR}20`,
-                                              transform: 'scale(1.1)',
-                                            },
-                                            transition: 'all 0.3s ease',
-                                          }}
-                                          onClick={(e) => {
-                                            e.stopPropagation();
-                                            alert(`Motif de refus: ${candidature.motif_refus}`);
-                                          }}
-                                        >
-                                          <ViewIcon fontSize="small" />
-                                        </IconButton>
-                                      </Tooltip>
-                                    )}
-                                  </Stack>
-                                </TableCell>
-                              </TableRow>
-                            );
-                          })}
-                        </TableBody>
-                      </Table>
-                    </TableContainer>
-                  ) : (
-                    <Card sx={{ 
-                      textAlign: 'center', 
-                      py: { xs: 6, md: 8 }, 
-                      borderRadius: 3,
-                      background: `linear-gradient(135deg, ${alpha(PALETTE.GOLD, 0.05)} 0%, ${alpha(PALETTE.WHITE, 0.1)} 100%)`,
-                    }}>
-                      <TrophyIcon sx={{ 
-                        fontSize: { xs: 48, md: 64 }, 
-                        color: `${PALETTE.GOLD}30`, 
-                        mb: 3,
-                        animation: 'bounce 2s infinite',
-                        '@keyframes bounce': {
-                          '0%, 100%': { transform: 'translateY(0)' },
-                          '50%': { transform: 'translateY(-10px)' },
-                        }
-                      }} />
-                      <Typography variant="h6" color="text.secondary" gutterBottom>
-                        Aucune candidature pour le moment
-                      </Typography>
-                      <Typography variant="body2" color="text.secondary" sx={{ 
-                        mb: 4, 
-                        maxWidth: 400, 
-                        mx: 'auto',
-                        px: 2 
-                      }}>
-                        Postulez à une édition pour commencer votre aventure et accéder aux discussions
-                      </Typography>
-                      <Button 
-                        variant="contained" 
-                        href="/postuler"
-                        sx={{
-                          background: `linear-gradient(135deg, ${PALETTE.GOLD} 0%, ${PALETTE.GOLD_DARK} 100%)`,
-                          color: PALETTE.BLACK,
-                          fontWeight: 'bold',
-                          px: 4,
-                          '&:hover': {
-                            transform: 'translateY(-2px)',
-                            boxShadow: `0 10px 20px ${alpha(PALETTE.GOLD, 0.3)}`,
-                          },
-                          transition: 'all 0.3s ease',
-                        }}
-                      >
-                        Postuler maintenant
-                      </Button>
-                    </Card>
-                  )}
-                </Box>
-              </Zoom>
-            )}
-
-            {/* Tab 2: Votes & Classement */}
-            {activeTab === 1 && (
-              <Zoom in={true} timeout={500}>
-                <Box>
-                  {activeCandidature ? (
-                    <>
-                      <Card sx={{ mb: 3, borderRadius: 3 }}>
-                        <CardContent>
-                          <Typography variant="h6" fontWeight="bold" color={PALETTE.RED_DARK} gutterBottom>
-                            Votre progression dans {activeCandidature.edition?.nom}
-                          </Typography>
-                          
-                          {/* Barre de progression */}
-                          <Box sx={{ mb: 4 }}>
-                            <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 1 }}>
-                              <Typography variant="body2" color="text.secondary">
-                                Phase actuelle: {getPhaseLabel(activeCandidature.phase_actuelle)}
-                              </Typography>
-                              <Typography variant="body2" fontWeight="bold">
-                                {Math.round((activeCandidature.phase_actuelle / 4) * 100)}%
-                              </Typography>
-                            </Stack>
-                            <LinearProgress 
-                              variant="determinate" 
-                              value={(activeCandidature.phase_actuelle / 4) * 100} 
-                              sx={{ 
-                                height: 10, 
-                                borderRadius: 5,
-                                bgcolor: `${PALETTE.GOLD}20`,
-                                '& .MuiLinearProgress-bar': {
-                                  background: `linear-gradient(90deg, ${PALETTE.GOLD} 0%, ${PALETTE.GOLD_DARK} 100%)`,
-                                  borderRadius: 5
-                                }
-                              }}
-                            />
-                            <Stack direction="row" justifyContent="space-between" sx={{ mt: 1 }}>
-                              {[1, 2, 3, 4].map((phase) => (
-                                <Typography 
-                                  key={phase} 
-                                  variant="caption" 
-                                  color={phase <= activeCandidature.phase_actuelle ? PALETTE.GOLD : 'text.secondary'}
-                                  fontWeight={phase === activeCandidature.phase_actuelle ? 'bold' : 'normal'}
-                                >
-                                  {getPhaseLabel(phase)}
-                                </Typography>
-                              ))}
-                            </Stack>
-                          </Box>
-                          
-                          {/* Votes et classement */}
-                          <Grid container spacing={3}>
-                            <Grid item xs={12} sm={6} md={3}>
-                              <Card variant="outlined" sx={{ borderRadius: 3, height: '100%' }}>
-                                <CardContent sx={{ textAlign: 'center', p: 3 }}>
-                                  <Typography variant="h2" fontWeight="bold" sx={{ 
-                                    background: `linear-gradient(135deg, ${PALETTE.GOLD} 0%, ${PALETTE.GOLD_DARK} 100%)`,
-                                    WebkitBackgroundClip: 'text',
-                                    WebkitTextFillColor: 'transparent',
-                                    mb: 1
-                                  }}>
-                                    {activeCandidature.nombre_votes || 0}
-                                  </Typography>
-                                  <Typography variant="body1" color="text.secondary" gutterBottom>
-                                    Votes reçus
-                                  </Typography>
-                                  <Button
-                                    variant="outlined"
-                                    size="small"
-                                    startIcon={<ShareIcon />}
-                                    sx={{ 
-                                      borderColor: PALETTE.GOLD,
-                                      color: PALETTE.GOLD,
-                                      mt: 1,
-                                      '&:hover': {
-                                        borderColor: PALETTE.GOLD_DARK,
-                                        bgcolor: `${PALETTE.GOLD}10`
-                                      }
-                                    }}
-                                    onClick={() => handleShare(activeCandidature)}
-                                  >
-                                    Partager pour plus de votes
-                                  </Button>
-                                </CardContent>
-                              </Card>
-                            </Grid>
-                            
-                            <Grid item xs={12} sm={6} md={3}>
-                              <Card variant="outlined" sx={{ borderRadius: 3, height: '100%' }}>
-                                <CardContent sx={{ textAlign: 'center', p: 3 }}>
-                                  <Typography variant="h2" fontWeight="bold" sx={{ 
-                                    background: `linear-gradient(135deg, ${PALETTE.GOLD} 0%, ${PALETTE.GOLD_DARK} 100%)`,
-                                    WebkitBackgroundClip: 'text',
-                                    WebkitTextFillColor: 'transparent',
-                                    mb: 1
-                                  }}>
-                                    #-
-                                  </Typography>
-                                  <Typography variant="body1" color="text.secondary" gutterBottom>
-                                    Classement dans votre catégorie
-                                  </Typography>
-                                  <Button
-                                    variant="outlined"
-                                    size="small"
-                                    sx={{ 
-                                      borderColor: PALETTE.GOLD,
-                                      color: PALETTE.GOLD,
-                                      mt: 1,
-                                      '&:hover': {
-                                        borderColor: PALETTE.GOLD_DARK,
-                                        bgcolor: `${PALETTE.GOLD}10`
-                                      }
-                                    }}
-                                    onClick={() => navigate(`/classement/${activeCandidature.category_id}`)}
-                                  >
-                                    Voir le classement complet
-                                  </Button>
-                                </CardContent>
-                              </Card>
-                            </Grid>
-                          </Grid>
-                        </CardContent>
-                      </Card>
-                      
-                      <Alert 
-                        severity="info" 
-                        sx={{ 
-                          borderRadius: 3,
-                          bgcolor: `${PALETTE.INFO}10`,
-                          border: `1px solid ${PALETTE.INFO}30`
-                        }}
-                      >
-                        <Typography variant="body2">
-                          <strong>Astuce :</strong> Partagez votre profil sur les réseaux sociaux 
-                          pour recevoir plus de votes et augmenter vos chances de gagner !
-                        </Typography>
-                      </Alert>
-                    </>
-                  ) : (
-                    <Card sx={{ textAlign: 'center', py: 8, borderRadius: 3 }}>
-                      <VoteIcon sx={{ fontSize: 64, color: `${PALETTE.GOLD}30`, mb: 3 }} />
-                      <Typography variant="h6" color="text.secondary" gutterBottom>
-                        Aucune candidature active
-                      </Typography>
-                      <Typography variant="body2" color="text.secondary" sx={{ mb: 4 }}>
-                        Vous devez avoir une candidature validée pour voir les votes et le classement
-                      </Typography>
-                      <Button 
-                        variant="contained" 
-                        href="/postuler"
-                        sx={{
-                          background: `linear-gradient(135deg, ${PALETTE.GOLD} 0%, ${PALETTE.GOLD_DARK} 100%)`,
-                          color: PALETTE.BLACK,
-                          fontWeight: 'bold',
-                          px: 4
-                        }}
-                      >
-                        Postuler maintenant
-                      </Button>
-                    </Card>
-                  )}
-                </Box>
-              </Zoom>
-            )}
-
-            {/* Tab 3: Prochaines étapes */}
-            {activeTab === 2 && (
-              <Zoom in={true} timeout={500}>
-                <Box>
-                  {activeCandidature ? (
-                    <Grid container spacing={3}>
-                      {[
-                        {
-                          phase: 1,
-                          title: 'Présélection',
-                          description: 'Votre candidature a été validée. Attendez les résultats de la présélection.',
-                          date: '15-30 Nov 2024',
-                          status: 'completed',
-                        },
-                        {
-                          phase: 2,
-                          title: 'Demi-finale',
-                          description: 'Préparez votre deuxième performance. Les votes du public seront ouverts.',
-                          date: '1-15 Déc 2024',
-                          status: 'current',
-                        },
-                        {
-                          phase: 3,
-                          title: 'Phase finale',
-                          description: 'Performance spéciale devant le jury. Les votes comptent double.',
-                          date: '16-31 Déc 2024',
-                          status: 'upcoming',
-                        },
-                        {
-                          phase: 4,
-                          title: 'Grande finale',
-                          description: 'Grande finale avec spectacle live. Les gagnants seront annoncés.',
-                          date: '10 Janv 2025',
-                          status: 'upcoming',
-                        },
-                      ].map((etape, index) => (
-                        <Grid item xs={12} md={3} key={etape.phase}>
-                          <Card 
-                            sx={{ 
-                              height: '100%',
-                              border: etape.status === 'current' ? `2px solid ${PALETTE.GOLD}` : '1px solid',
-                              borderColor: 'divider',
-                              borderRadius: 3,
-                              transition: 'all 0.3s ease',
-                              '&:hover': {
-                                transform: 'translateY(-4px)',
-                                boxShadow: `0 10px 30px ${alpha(PALETTE.GOLD, 0.2)}`,
-                              }
-                            }}
-                          >
-                            <CardContent>
-                              <Stack spacing={2}>
-                                <Stack direction="row" alignItems="center" spacing={2}>
-                                  <Box sx={{
-                                    width: 48,
-                                    height: 48,
-                                    borderRadius: '50%',
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    justifyContent: 'center',
-                                    bgcolor: etape.status === 'completed' ? `${PALETTE.SUCCESS}20` :
-                                            etape.status === 'current' ? `${PALETTE.GOLD}20` :
-                                            `${PALETTE.GRAY_LIGHT}`,
-                                    color: etape.status === 'completed' ? PALETTE.SUCCESS :
-                                          etape.status === 'current' ? PALETTE.GOLD :
-                                          'text.secondary',
-                                  }}>
-                                    {etape.status === 'completed' ? (
-                                      <CheckIcon />
-                                    ) : (
-                                      <Typography variant="h6" fontWeight="bold">
-                                        {etape.phase}
-                                      </Typography>
-                                    )}
-                                  </Box>
-                                  
-                                  <Box sx={{ flex: 1 }}>
-                                    <Typography variant="h6" fontWeight="bold">
-                                      {etape.title}
+                                  <Stack direction="row" justifyContent="space-between">
+                                    <Typography variant="body2" color="text.secondary">
+                                      Date d'inscription
                                     </Typography>
-                                    <Chip
-                                      label={
-                                        etape.status === 'completed' ? 'Terminé' :
-                                        etape.status === 'current' ? 'En cours' : 'À venir'
-                                      }
-                                      size="small"
-                                      sx={{
-                                        bgcolor: etape.status === 'completed' ? `${PALETTE.SUCCESS}20` :
-                                                etape.status === 'current' ? `${PALETTE.WARNING}20` :
-                                                `${PALETTE.GRAY_LIGHT}`,
-                                        color: etape.status === 'completed' ? PALETTE.SUCCESS :
-                                              etape.status === 'current' ? PALETTE.WARNING :
-                                              'text.secondary',
-                                        fontWeight: 'medium'
-                                      }}
-                                    />
-                                  </Box>
+                                    <Typography variant="body2">
+                                      {formatDate(candidature.created_at)}
+                                    </Typography>
+                                  </Stack>
                                 </Stack>
                                 
-                                <Typography variant="body2" color="text.secondary">
-                                  {etape.description}
-                                </Typography>
-                                
-                                <Stack direction="row" alignItems="center" spacing={1}>
-                                  <CalendarIcon sx={{ fontSize: 16, color: PALETTE.GOLD }} />
-                                  <Typography variant="caption" color="text.secondary">
-                                    {etape.date}
-                                  </Typography>
-                                </Stack>
-                                
-                                {etape.status === 'current' && (
+                                <Stack direction="row" spacing={1}>
                                   <Button
                                     variant="outlined"
                                     size="small"
-                                    sx={{ 
-                                      borderColor: PALETTE.GOLD,
-                                      color: PALETTE.GOLD,
-                                      '&:hover': {
-                                        borderColor: PALETTE.GOLD_DARK,
-                                        bgcolor: `${PALETTE.GOLD}10`
-                                      }
-                                    }}
+                                    startIcon={<InsightsIcon />}
+                                    onClick={() => handleOpenVotesStats(candidature.edition_id, candidature.category_id)}
+                                    sx={{ flex: 1 }}
                                   >
-                                    Préparer ma performance
+                                    Voir les stats
                                   </Button>
-                                )}
+                                  {candidature.category_id && (
+                                    <Button
+                                      variant="contained"
+                                      size="small"
+                                      startIcon={<ChatIcon />}
+                                      onClick={() => handleOpenChat(candidature.category_id, candidature.category?.nom, candidature)}
+                                      sx={{ flex: 1 }}
+                                    >
+                                      Chat
+                                    </Button>
+                                  )}
+                                </Stack>
                               </Stack>
                             </CardContent>
                           </Card>
                         </Grid>
-                      ))}
-                    </Grid>
-                  ) : (
-                    <Alert 
-                      severity="warning" 
-                      sx={{ 
-                        borderRadius: 3,
-                        bgcolor: `${PALETTE.WARNING}10`,
-                        border: `1px solid ${PALETTE.WARNING}30`
+                      );
+                    })}
+                  </Grid>
+                ) : (
+                  <Card sx={{ textAlign: 'center', py: 8, borderRadius: 3 }}>
+                    <PersonIcon sx={{ fontSize: 64, color: `${PALETTE.GOLD}30`, mb: 3 }} />
+                    <Typography variant="h6" color="text.secondary" gutterBottom>
+                      Aucune candidature active
+                    </Typography>
+                    <Button 
+                      variant="contained" 
+                      href="/postuler"
+                      sx={{
+                        background: `linear-gradient(135deg, ${PALETTE.GOLD} 0%, ${PALETTE.GOLD_DARK} 100%)`,
+                        color: PALETTE.BLACK,
+                        fontWeight: 'bold',
+                        px: 4,
+                        mt: 2
                       }}
                     >
-                      <Typography variant="body2">
-                        Vous n'avez pas de candidature active. Postulez à une édition pour voir 
-                        les prochaines étapes de la compétition.
-                      </Typography>
-                    </Alert>
-                  )}
-                </Box>
-              </Zoom>
+                      Postuler maintenant
+                    </Button>
+                  </Card>
+                )}
+              </Box>
             )}
 
-            {/* Tab 4: Éditions suggérées */}
-            {activeTab === 3 && (
-              <Zoom in={true} timeout={500}>
-                <Box>
-                  {editionsOuvertes?.length > 0 ? (
-                    <>
-                      <Grid container spacing={3}>
-                        {editionsOuvertes.map((edition) => (
-                          <Grid item xs={12} md={4} key={edition.id}>
-                            <Card 
-                              sx={{ 
-                                height: '100%',
-                                borderRadius: 3,
-                                transition: 'all 0.3s ease',
-                                '&:hover': {
-                                  transform: 'translateY(-4px)',
-                                  boxShadow: `0 15px 40px ${alpha(PALETTE.GOLD, 0.15)}`,
-                                }
-                              }}
-                            >
-                              <CardContent>
-                                <Stack spacing={2}>
-                                  <Stack direction="row" justifyContent="space-between" alignItems="flex-start">
-                                    <Box>
-                                      <Typography variant="h6" fontWeight="bold">
-                                        {edition.nom}
-                                      </Typography>
-                                      <Typography variant="body2" color="text.secondary">
-                                        {edition.annee} - {edition.numero_edition}ème édition
-                                      </Typography>
-                                    </Box>
-                                    <Chip
-                                      label="Inscriptions ouvertes"
-                                      size="small"
-                                      sx={{ 
-                                        bgcolor: `${PALETTE.SUCCESS}20`,
-                                        color: PALETTE.SUCCESS,
-                                        fontWeight: 'medium'
-                                      }}
-                                    />
+            {/* Tab 2: Votes & Statistiques */}
+            {activeTab === 1 && (
+              <Box>
+                {/* Filtres */}
+                <Card sx={{ mb: 3, p: 2, borderRadius: 3 }}>
+                  <Grid container spacing={2} alignItems="center">
+                    <Grid item xs={12} sm={6} md={3}>
+                      <FormControl fullWidth size="small">
+                        <InputLabel>Édition</InputLabel>
+                        <Select
+                          value={filters.editionId}
+                          label="Édition"
+                          onChange={(e) => setFilters({...filters, editionId: e.target.value})}
+                        >
+                          <MenuItem value="">Toutes</MenuItem>
+                          {dashboardData?.candidatures?.map((c) => (
+                            <MenuItem key={c.edition_id} value={c.edition_id}>
+                              {c.edition?.nom}
+                            </MenuItem>
+                          ))}
+                        </Select>
+                      </FormControl>
+                    </Grid>
+                    <Grid item xs={12} sm={6} md={3}>
+                      <FormControl fullWidth size="small">
+                        <InputLabel>Catégorie</InputLabel>
+                        <Select
+                          value={filters.categoryId}
+                          label="Catégorie"
+                          onChange={(e) => setFilters({...filters, categoryId: e.target.value})}
+                        >
+                          <MenuItem value="">Toutes</MenuItem>
+                          {dashboardData?.candidatures?.map((c) => (
+                            <MenuItem key={c.category_id} value={c.category_id}>
+                              {c.category?.nom}
+                            </MenuItem>
+                          ))}
+                        </Select>
+                      </FormControl>
+                    </Grid>
+                    <Grid item xs={12} sm={6} md={3}>
+                      <TextField
+                        fullWidth
+                        size="small"
+                        type="date"
+                        label="Du"
+                        value={filters.dateFrom}
+                        onChange={(e) => setFilters({...filters, dateFrom: e.target.value})}
+                        InputLabelProps={{ shrink: true }}
+                      />
+                    </Grid>
+                    <Grid item xs={12} sm={6} md={3}>
+                      <TextField
+                        fullWidth
+                        size="small"
+                        type="date"
+                        label="Au"
+                        value={filters.dateTo}
+                        onChange={(e) => setFilters({...filters, dateTo: e.target.value})}
+                        InputLabelProps={{ shrink: true }}
+                      />
+                    </Grid>
+                    <Grid item xs={12}>
+                      <Stack direction="row" spacing={2} alignItems="center">
+                        <TextField
+                          fullWidth
+                          size="small"
+                          label="Rechercher..."
+                          value={filters.search}
+                          onChange={(e) => setFilters({...filters, search: e.target.value})}
+                          InputProps={{
+                            startAdornment: <SearchIcon sx={{ mr: 1, color: 'text.secondary' }} />,
+                          }}
+                        />
+                        <Button
+                          variant="outlined"
+                          startIcon={<FilterIcon />}
+                          onClick={() => setFilters({
+                            editionId: '',
+                            categoryId: '',
+                            dateFrom: '',
+                            dateTo: '',
+                            search: '',
+                          })}
+                        >
+                          Réinitialiser
+                        </Button>
+                      </Stack>
+                    </Grid>
+                  </Grid>
+                </Card>
+
+                {/* Statistiques de la période */}
+                {votesData?.stats && (
+                  <Grid container spacing={2} sx={{ mb: 3 }}>
+                    <Grid item xs={12} sm={6} md={3}>
+                      <Card sx={{ borderRadius: 3 }}>
+                        <CardContent sx={{ textAlign: 'center' }}>
+                          <Typography variant="h4" fontWeight="bold" color={PALETTE.SUCCESS}>
+                            {votesData.stats.total_votes}
+                          </Typography>
+                          <Typography variant="body2" color="text.secondary">
+                            Votes totaux
+                          </Typography>
+                        </CardContent>
+                      </Card>
+                    </Grid>
+                    <Grid item xs={12} sm={6} md={3}>
+                      <Card sx={{ borderRadius: 3 }}>
+                        <CardContent sx={{ textAlign: 'center' }}>
+                          <Typography variant="h4" fontWeight="bold" color={PALETTE.GOLD}>
+                            {formatCurrency(votesData.stats.total_amount)}
+                          </Typography>
+                          <Typography variant="body2" color="text.secondary">
+                            Montant total
+                          </Typography>
+                        </CardContent>
+                      </Card>
+                    </Grid>
+                    <Grid item xs={12} sm={6} md={3}>
+                      <Card sx={{ borderRadius: 3 }}>
+                        <CardContent sx={{ textAlign: 'center' }}>
+                          <Typography variant="h4" fontWeight="bold" color={PALETTE.INFO}>
+                            {votesData.stats.unique_voters}
+                          </Typography>
+                          <Typography variant="body2" color="text.secondary">
+                            Votants uniques
+                          </Typography>
+                        </CardContent>
+                      </Card>
+                    </Grid>
+                    <Grid item xs={12} sm={6} md={3}>
+                      <Card sx={{ borderRadius: 3 }}>
+                        <CardContent sx={{ textAlign: 'center' }}>
+                          <Typography variant="h4" fontWeight="bold" color={PALETTE.RED_DARK}>
+                            {formatCurrency(votesData.stats.avg_vote_amount)}
+                          </Typography>
+                          <Typography variant="body2" color="text.secondary">
+                            Moyenne/vote
+                          </Typography>
+                        </CardContent>
+                      </Card>
+                    </Grid>
+                  </Grid>
+                )}
+
+                {/* Tableau des votes */}
+                <Card sx={{ borderRadius: 3 }}>
+                  <CardContent>
+                    <Typography variant="h6" fontWeight="bold" gutterBottom>
+                      Liste des votes
+                    </Typography>
+                    {votesLoading ? (
+                      <Box sx={{ textAlign: 'center', py: 4 }}>
+                        <CircularProgress />
+                      </Box>
+                    ) : votesData?.votes?.data?.length > 0 ? (
+                      <TableContainer>
+                        <Table>
+                          <TableHead>
+                            <TableRow>
+                              <TableCell>Date</TableCell>
+                              <TableCell>Votant</TableCell>
+                              <TableCell>Montant</TableCell>
+                              <TableCell>Méthode</TableCell>
+                              <TableCell>Édition</TableCell>
+                              <TableCell>Actions</TableCell>
+                            </TableRow>
+                          </TableHead>
+                          <TableBody>
+                            {votesData.votes.data.map((vote) => (
+                              <TableRow key={vote.id} hover>
+                                <TableCell>{formatDate(vote.created_at)}</TableCell>
+                                <TableCell>
+                                  <Stack spacing={0.5}>
+                                    <Typography variant="body2">
+                                      {vote.email_votant}
+                                    </Typography>
+                                    <Typography variant="caption" color="text.secondary">
+                                      {vote.customer_phone}
+                                    </Typography>
                                   </Stack>
-                                  
-                                  <Typography variant="body2" color="text.secondary" sx={{ 
-                                    display: '-webkit-box',
-                                    WebkitLineClamp: 2,
-                                    WebkitBoxOrient: 'vertical',
-                                    overflow: 'hidden'
-                                  }}>
-                                    {edition.description}
+                                </TableCell>
+                                <TableCell>
+                                  <Typography fontWeight="bold" color={PALETTE.GOLD}>
+                                    {formatCurrency(vote.amount)}
                                   </Typography>
-                                  
-                                  <Stack spacing={1}>
-                                    <Stack direction="row" justifyContent="space-between">
-                                      <Typography variant="body2" color="text.secondary">
-                                        Clôture des inscriptions
-                                      </Typography>
-                                      <Typography variant="body2" fontWeight="medium">
-                                        {edition.date_fin_inscriptions ? 
-                                          new Date(edition.date_fin_inscriptions).toLocaleDateString('fr-FR') : 
-                                          'Non définie'
-                                        }
-                                      </Typography>
-                                    </Stack>
-                                    <Stack direction="row" justifyContent="space-between">
-                                      <Typography variant="body2" color="text.secondary">
-                                        Catégories disponibles
-                                      </Typography>
-                                      <Typography variant="body2">
-                                        {edition.categories?.length || 0}
-                                      </Typography>
-                                    </Stack>
-                                  </Stack>
-                                  
-                                  <Stack direction="row" justifyContent="space-between" alignItems="center">
-                                    <Stack direction="row" spacing={1}>
-                                      {edition.categories?.slice(0, 2).map((category) => (
-                                        <Chip
-                                          key={category.id}
-                                          label={category.nom}
-                                          size="small"
-                                          variant="outlined"
-                                          sx={{ 
-                                            borderColor: PALETTE.GOLD,
-                                            color: PALETTE.BROWN
-                                          }}
-                                        />
-                                      ))}
-                                      {edition.categories?.length > 2 && (
-                                        <Chip
-                                          label={`+${edition.categories.length - 2}`}
-                                          size="small"
-                                        />
-                                      )}
-                                    </Stack>
-                                    
-                                    <Button
-                                      variant="contained"
-                                      size="small"
-                                      href={`/postuler?edition=${edition.id}`}
-                                      sx={{
-                                        background: `linear-gradient(135deg, ${PALETTE.GOLD} 0%, ${PALETTE.GOLD_DARK} 100%)`,
-                                        color: PALETTE.BLACK,
-                                        fontWeight: 'bold',
-                                        '&:hover': {
-                                          background: `linear-gradient(135deg, ${PALETTE.GOLD_LIGHT} 0%, ${PALETTE.GOLD} 100%)`,
-                                        }
-                                      }}
-                                    >
-                                      Postuler
-                                    </Button>
-                                  </Stack>
-                                </Stack>
-                              </CardContent>
-                            </Card>
-                          </Grid>
-                        ))}
-                      </Grid>
-                      
-                      <Alert 
-                        severity="info" 
-                        sx={{ 
-                          mt: 3,
-                          borderRadius: 3,
-                          bgcolor: `${PALETTE.INFO}10`,
-                          border: `1px solid ${PALETTE.INFO}30`
-                        }}
-                      >
-                        <Typography variant="body2">
-                          <strong>Conseil :</strong> Vous pouvez postuler à plusieurs éditions simultanément, 
-                          mais pas à plusieurs catégories dans la même édition.
+                                </TableCell>
+                                <TableCell>
+                                  <Chip
+                                    label={vote.payment?.payment_method || 'N/A'}
+                                    size="small"
+                                    sx={{
+                                      bgcolor: vote.payment?.payment_method === 'mobile_money' 
+                                        ? `${PALETTE.SUCCESS}20` 
+                                        : `${PALETTE.INFO}20`,
+                                      color: vote.payment?.payment_method === 'mobile_money'
+                                        ? PALETTE.SUCCESS
+                                        : PALETTE.INFO,
+                                    }}
+                                  />
+                                </TableCell>
+                                <TableCell>
+                                  <Typography variant="body2">
+                                    {vote.edition?.nom}
+                                  </Typography>
+                                  <Typography variant="caption" color="text.secondary">
+                                    {vote.category?.nom}
+                                  </Typography>
+                                </TableCell>
+                                <TableCell>
+                                  <IconButton size="small">
+                                    <ViewIcon />
+                                  </IconButton>
+                                </TableCell>
+                              </TableRow>
+                            ))}
+                          </TableBody>
+                        </Table>
+                      </TableContainer>
+                    ) : (
+                      <Box sx={{ textAlign: 'center', py: 4 }}>
+                        <VoteIcon sx={{ fontSize: 64, color: `${PALETTE.GOLD}30`, mb: 3 }} />
+                        <Typography variant="h6" color="text.secondary" gutterBottom>
+                          Aucun vote trouvé
                         </Typography>
-                      </Alert>
-                    </>
-                  ) : (
-                    <Card sx={{ textAlign: 'center', py: 8, borderRadius: 3 }}>
-                      <CalendarIcon sx={{ fontSize: 64, color: `${PALETTE.GOLD}30`, mb: 3 }} />
+                        <Typography variant="body2" color="text.secondary">
+                          Aucun vote ne correspond à vos filtres
+                        </Typography>
+                      </Box>
+                    )}
+                  </CardContent>
+                </Card>
+              </Box>
+            )}
+
+            {/* Tab 3: Classement */}
+            {activeTab === 2 && (
+              <Box>
+                {dashboardData?.ranking ? (
+                  <Grid container spacing={3}>
+                    <Grid item xs={12} md={8}>
+                      <Card sx={{ borderRadius: 3, height: '100%' }}>
+                        <CardContent>
+                          <Typography variant="h6" fontWeight="bold" gutterBottom>
+                            Votre position dans le classement
+                          </Typography>
+                          
+                          <Box sx={{ textAlign: 'center', py: 4 }}>
+                            <Box sx={{
+                              width: 200,
+                              height: 200,
+                              borderRadius: '50%',
+                              background: `conic-gradient(${PALETTE.GOLD} 0% ${dashboardData.ranking.percentage}%, ${PALETTE.GRAY_LIGHT} ${dashboardData.ranking.percentage}% 100%)`,
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              margin: '0 auto 20px',
+                              position: 'relative',
+                            }}>
+                              <Box sx={{
+                                width: 160,
+                                height: 160,
+                                borderRadius: '50%',
+                                background: PALETTE.WHITE,
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                flexDirection: 'column',
+                              }}>
+                                <Typography variant="h1" fontWeight="bold" color={PALETTE.GOLD}>
+                                  #{dashboardData.ranking.position}
+                                </Typography>
+                                <Typography variant="body2" color="text.secondary">
+                                  sur {dashboardData.ranking.total_participants}
+                                </Typography>
+                              </Box>
+                            </Box>
+                            
+                            <Typography variant="h6" color={PALETTE.GOLD} gutterBottom>
+                              Top {dashboardData.ranking.percentage}%
+                            </Typography>
+                            
+                            <Stack direction="row" spacing={3} justifyContent="center" sx={{ mt: 3 }}>
+                              <Box sx={{ textAlign: 'center' }}>
+                                <Typography variant="h4" fontWeight="bold">
+                                  {dashboardData.ranking.ahead}
+                                </Typography>
+                                <Typography variant="body2" color="text.secondary">
+                                  Devant vous
+                                </Typography>
+                              </Box>
+                              <Box sx={{ textAlign: 'center' }}>
+                                <Typography variant="h4" fontWeight="bold">
+                                  {dashboardData.ranking.behind}
+                                </Typography>
+                                <Typography variant="body2" color="text.secondary">
+                                  Derrière vous
+                                </Typography>
+                              </Box>
+                            </Stack>
+                          </Box>
+                        </CardContent>
+                      </Card>
+                    </Grid>
+                    
+                    <Grid item xs={12} md={4}>
+                      <Card sx={{ borderRadius: 3, height: '100%' }}>
+                        <CardContent>
+                          <Typography variant="h6" fontWeight="bold" gutterBottom>
+                            Top 10 du classement
+                          </Typography>
+                          <List>
+                            {dashboardData.ranking.top_10?.map((candidature, index) => (
+                              <ListItem 
+                                key={candidature.id}
+                                sx={{
+                                  bgcolor: candidature.candidat_id === user?.id ? `${PALETTE.GOLD}10` : 'transparent',
+                                  borderRadius: 2,
+                                  mb: 1,
+                                }}
+                              >
+                                <ListItemAvatar>
+                                  <Avatar sx={{ bgcolor: index < 3 ? PALETTE.GOLD : PALETTE.GRAY_DARK }}>
+                                    {index + 1}
+                                  </Avatar>
+                                </ListItemAvatar>
+                                <ListItemText
+                                  primary={
+                                    <Typography fontWeight={candidature.candidat_id === user?.id ? 'bold' : 'normal'}>
+                                      {candidature.candidat?.nom_complet || 'Candidat'}
+                                    </Typography>
+                                  }
+                                  secondary={`${candidature.nombre_votes} votes`}
+                                />
+                                <ListItemSecondaryAction>
+                                  <Chip
+                                    label={`#${index + 1}`}
+                                    size="small"
+                                    sx={{
+                                      bgcolor: index === 0 ? PALETTE.GOLD : 
+                                              index === 1 ? PALETTE.SILVER : 
+                                              index === 2 ? PALETTE.BRONZE : 
+                                              PALETTE.GRAY_LIGHT,
+                                      color: index < 3 ? PALETTE.WHITE : PALETTE.GRAY_DARK,
+                                    }}
+                                  />
+                                </ListItemSecondaryAction>
+                              </ListItem>
+                            ))}
+                          </List>
+                        </CardContent>
+                      </Card>
+                    </Grid>
+                  </Grid>
+                ) : (
+                  <Card sx={{ textAlign: 'center', py: 8, borderRadius: 3 }}>
+                    <TrophyIcon sx={{ fontSize: 64, color: `${PALETTE.GOLD}30`, mb: 3 }} />
+                    <Typography variant="h6" color="text.secondary" gutterBottom>
+                      Aucun classement disponible
+                    </Typography>
+                    <Typography variant="body2" color="text.secondary" sx={{ mb: 4 }}>
+                      Vous devez participer à une édition pour apparaître dans le classement
+                    </Typography>
+                  </Card>
+                )}
+              </Box>
+            )}
+
+            {/* Tab 4: Paiements */}
+            {activeTab === 3 && (
+              <Box>
+                <Alert severity="info" sx={{ mb: 3, borderRadius: 3 }}>
+                  <Typography variant="body2">
+                    Les paiements sont automatiquement enregistrés lors des votes. 
+                    Vous pouvez consulter l'historique complet de vos transactions.
+                  </Typography>
+                </Alert>
+                
+                <Card sx={{ borderRadius: 3 }}>
+                  <CardContent>
+                    <Typography variant="h6" fontWeight="bold" gutterBottom>
+                      Historique des paiements
+                    </Typography>
+                    <Box sx={{ textAlign: 'center', py: 4 }}>
+                      <MoneyIcon sx={{ fontSize: 64, color: `${PALETTE.GOLD}30`, mb: 3 }} />
                       <Typography variant="h6" color="text.secondary" gutterBottom>
-                        Aucune édition ouverte actuellement
+                        Fonctionnalité à venir
                       </Typography>
-                      <Typography variant="body2" color="text.secondary" sx={{ mb: 4 }}>
-                        Les prochaines éditions seront annoncées bientôt
+                      <Typography variant="body2" color="text.secondary">
+                        L'historique détaillé des paiements sera disponible prochainement
                       </Typography>
-                    </Card>
-                  )}
-                </Box>
-              </Zoom>
+                    </Box>
+                  </CardContent>
+                </Card>
+              </Box>
             )}
           </Box>
         </CardContent>
       </Card>
 
-      {/* Section "Chats disponibles" - NOUVELLE SECTION */}
-      <Slide direction="up" in={true} timeout={800}>
-        <Card sx={{ 
-          borderRadius: 4, 
-          mb: 4,
-          background: `linear-gradient(135deg, ${alpha(PALETTE.CHAT_PRIMARY, 0.05)} 0%, ${alpha(PALETTE.CHAT_SECONDARY, 0.05)} 100%)`,
-          border: `1px solid ${alpha(PALETTE.CHAT_PRIMARY, 0.1)}`,
-          ...cardHoverAnimation,
-        }}>
+      {/* Section "Derniers votes" */}
+      {dashboardData?.last_votes?.length > 0 && (
+        <Card sx={{ borderRadius: 4, mb: 4 }}>
           <CardContent>
             <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 3 }}>
               <Box>
-                <Typography variant="h5" fontWeight="bold" sx={{ 
-                  color: PALETTE.CHAT_PRIMARY,
-                  background: `linear-gradient(45deg, ${PALETTE.CHAT_PRIMARY}, ${PALETTE.CHAT_SECONDARY})`,
-                  WebkitBackgroundClip: 'text',
-                  WebkitTextFillColor: 'transparent',
-                  backgroundClip: 'text',
-                }}>
-                  Discussions disponibles
+                <Typography variant="h5" fontWeight="bold" color={PALETTE.RED_DARK}>
+                  Derniers votes reçus
                 </Typography>
                 <Typography variant="body2" color="text.secondary">
-                  Communiquez avec les autres candidats et le promoteur
+                  Les 10 votes les plus récents
                 </Typography>
               </Box>
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                <ChatNotificationBell />
-                <Tooltip title="Rafraîchir les discussions">
-                  <IconButton 
-                    size="small" 
-                    onClick={handleRefresh}
-                    sx={{ color: PALETTE.CHAT_PRIMARY }}
-                  >
-                    <RefreshIcon />
-                  </IconButton>
-                </Tooltip>
-              </Box>
+              <Button
+                variant="outlined"
+                startIcon={<ArrowIcon />}
+                onClick={() => setActiveTab(1)}
+              >
+                Voir tous les votes
+              </Button>
             </Stack>
             
-            {candidatures?.filter(c => ['validee', 'preselectionne', 'finaliste'].includes(c.statut)).length > 0 ? (
-              <Grid container spacing={2}>
-                {candidatures
-                  .filter(c => ['validee', 'preselectionne', 'finaliste'].includes(c.statut))
-                  .map((candidature, index) => (
-                    <Grid item xs={12} sm={6} md={4} key={candidature.id}>
-                      <Card 
-                        variant="outlined"
-                        sx={{ 
-                          borderRadius: 3,
-                          cursor: 'pointer',
-                          border: `1px solid ${alpha(PALETTE.CHAT_PRIMARY, 0.2)}`,
-                          transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
-                          '&:hover': {
-                            borderColor: PALETTE.CHAT_PRIMARY,
-                            bgcolor: `${PALETTE.CHAT_PRIMARY}04`,
-                            transform: 'translateY(-4px) scale(1.02)',
-                            boxShadow: `0 8px 25px ${alpha(PALETTE.CHAT_PRIMARY, 0.15)}`,
-                          }
-                        }}
-                        onClick={() => {
-                          if (candidature.category_id) {
-                            handleOpenChat(candidature.category_id, candidature.category?.nom, candidature);
-                          } else {
-                            toast.error('Catégorie non disponible pour le chat');
-                          }
-                        }}
-                      >
-                        <CardContent sx={{ p: 2 }}>
-                          <Stack direction="row" alignItems="center" spacing={2}>
-                            <Avatar
-                              sx={{
-                                bgcolor: PALETTE.CHAT_PRIMARY,
-                                width: 50,
-                                height: 50,
-                                transition: 'transform 0.3s ease',
-                                '&:hover': {
-                                  transform: 'rotate(10deg)',
-                                }
-                              }}
-                            >
-                              <ChatIcon />
-                            </Avatar>
-                            <Box sx={{ flex: 1 }}>
-                              <Typography variant="subtitle1" fontWeight="bold">
-                                {candidature.category?.nom || 'Général'}
-                              </Typography>
-                              <Typography variant="body2" color="text.secondary">
-                                {candidature.edition?.nom}
-                              </Typography>
-                              <Stack direction="row" spacing={1} sx={{ mt: 1 }}>
-                                <Chip
-                                  label="Ouvrir la discussion"
-                                  size="small"
-                                  icon={<ForumIcon />}
-                                  sx={{ 
-                                    bgcolor: `${PALETTE.CHAT_PRIMARY}15`,
-                                    color: PALETTE.CHAT_PRIMARY,
-                                    fontWeight: 'medium',
-                                    fontSize: '0.75rem',
-                                  }}
-                                />
-                                <Chip
-                                  label={`${candidature.nombre_votes || 0} votes`}
-                                  size="small"
-                                  variant="outlined"
-                                  sx={{ 
-                                    borderColor: PALETTE.GOLD,
-                                    color: PALETTE.GOLD_DARK,
-                                    fontSize: '0.75rem',
-                                  }}
-                                />
-                              </Stack>
-                            </Box>
-                            <ArrowIcon sx={{ 
-                              color: PALETTE.CHAT_PRIMARY,
-                              transition: 'transform 0.3s ease',
-                              '&:hover': {
-                                transform: 'translateX(4px)',
-                              }
-                            }} />
-                          </Stack>
-                        </CardContent>
-                      </Card>
-                    </Grid>
-                  ))}
-              </Grid>
-            ) : (
-              <Paper sx={{ 
-                p: 4, 
-                textAlign: 'center', 
-                borderRadius: 3,
-                background: `linear-gradient(135deg, ${alpha(PALETTE.GRAY_LIGHT, 0.5)} 0%, ${alpha(PALETTE.WHITE, 0.5)} 100%)`,
-              }}>
-                <ChatIcon sx={{ 
-                  fontSize: 64, 
-                  color: `${PALETTE.CHAT_PRIMARY}30`, 
-                  mb: 3,
-                  animation: 'float 3s ease-in-out infinite',
-                }} />
-                <Typography variant="h6" color="text.secondary" gutterBottom>
-                  Aucune discussion disponible
-                </Typography>
-                <Typography variant="body2" color="text.secondary" sx={{ mb: 4 }}>
-                  Rejoignez une catégorie validée pour participer aux discussions
-                </Typography>
-                <Button
-                  variant="outlined"
-                  href="/postuler"
-                  startIcon={<CommentIcon />}
-                  sx={{ 
-                    borderColor: PALETTE.CHAT_PRIMARY,
-                    color: PALETTE.CHAT_PRIMARY,
-                    '&:hover': {
-                      borderColor: PALETTE.CHAT_SECONDARY,
-                      bgcolor: `${PALETTE.CHAT_PRIMARY}10`,
-                      transform: 'translateY(-2px)',
-                    },
-                    transition: 'all 0.3s ease',
-                  }}
-                >
-                  Postuler pour discuter
-                </Button>
-              </Paper>
-            )}
+            <Grid container spacing={2}>
+              {dashboardData.last_votes.map((vote) => (
+                <Grid item xs={12} sm={6} md={4} key={vote.id}>
+                  <Card variant="outlined" sx={{ borderRadius: 3 }}>
+                    <CardContent>
+                      <Stack spacing={1}>
+                        <Stack direction="row" justifyContent="space-between" alignItems="flex-start">
+                          <Typography variant="subtitle2" fontWeight="bold">
+                            {vote.email_votant}
+                          </Typography>
+                          <Chip
+                            label={formatCurrency(vote.amount)}
+                            size="small"
+                            sx={{
+                              bgcolor: `${PALETTE.GOLD}20`,
+                              color: PALETTE.GOLD_DARK,
+                              fontWeight: 'bold',
+                            }}
+                          />
+                        </Stack>
+                        
+                        <Typography variant="caption" color="text.secondary">
+                          {vote.customer_phone}
+                        </Typography>
+                        
+                        <Stack direction="row" justifyContent="space-between" alignItems="center">
+                          <Typography variant="caption">
+                            {formatDate(vote.created_at)}
+                          </Typography>
+                          <Typography variant="caption" color="text.secondary">
+                            {vote.edition?.nom}
+                          </Typography>
+                        </Stack>
+                      </Stack>
+                    </CardContent>
+                  </Card>
+                </Grid>
+              ))}
+            </Grid>
           </CardContent>
         </Card>
-      </Slide>
+      )}
 
       {/* Dialog de partage */}
       <Dialog 
@@ -1814,8 +1372,6 @@ const CandidatDashboard = () => {
         onClose={() => setShareDialogOpen(false)}
         maxWidth="sm"
         fullWidth
-        TransitionComponent={Slide}
-        TransitionProps={{ direction: 'up' }}
       >
         <DialogTitle sx={{ 
           bgcolor: PALETTE.GOLD, 
@@ -1883,11 +1439,6 @@ const CandidatDashboard = () => {
                           color: social.color,
                           width: 48,
                           height: 48,
-                          '&:hover': {
-                            bgcolor: `${social.color}20`,
-                            transform: 'scale(1.1)',
-                          },
-                          transition: 'all 0.2s ease',
                         }}
                       >
                         {social.icon}
@@ -1910,15 +1461,26 @@ const CandidatDashboard = () => {
             sx={{
               bgcolor: PALETTE.GOLD,
               color: PALETTE.BLACK,
-              '&:hover': {
-                bgcolor: PALETTE.GOLD_DARK,
-              }
             }}
           >
             Copier le lien
           </Button>
         </DialogActions>
       </Dialog>
+
+      {/* Modal de statistiques de votes */}
+      <VotesStatsModal
+        open={votesStatsOpen}
+        onClose={() => setVotesStatsOpen(false)}
+        editionId={selectedStatsEdition}
+        categoryId={selectedStatsCategory}
+        chartPeriod={chartPeriod}
+        onChartPeriodChange={setChartPeriod}
+        chartType={chartType}
+        onChartTypeChange={setChartType}
+        evolutionData={evolutionData}
+        chartData={prepareChartData()}
+      />
 
       {/* SpeedDial pour actions rapides */}
       <SpeedDial
@@ -1933,7 +1495,6 @@ const CandidatDashboard = () => {
             '&:hover': {
               bgcolor: PALETTE.GOLD_DARK,
             },
-            ...pulseAnimation,
           }
         }}
         icon={<SpeedDialIcon />}
@@ -1951,11 +1512,6 @@ const CandidatDashboard = () => {
               '& .MuiSpeedDialAction-fab': {
                 bgcolor: PALETTE.CHAT_PRIMARY,
                 color: PALETTE.WHITE,
-                '&:hover': {
-                  bgcolor: PALETTE.CHAT_SECONDARY,
-                  transform: 'scale(1.1)',
-                },
-                transition: 'all 0.2s ease',
               }
             }}
           />

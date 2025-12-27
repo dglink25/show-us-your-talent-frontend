@@ -66,7 +66,9 @@ import {
   WorkspacePremium as WorkspacePremiumIcon,
 } from '@mui/icons-material';
 import axios from '../../api/axios';
-import VoteModal from './VoteModal';
+
+// Importer PaymentModal depuis le fichier corrigé
+import PaymentModal from './PaymentModal';
 
 // Couleurs de la palette
 const PALETTE = {
@@ -257,6 +259,8 @@ const CandidatsPage = () => {
   const [selectedPhoto, setSelectedPhoto] = useState('');
   const [selectedVideo, setSelectedVideo] = useState('');
   const [selectedCandidatInfo, setSelectedCandidatInfo] = useState(null);
+  const [paymentModalOpen, setPaymentModalOpen] = useState(false);
+  const [selectedCandidatForPayment, setSelectedCandidatForPayment] = useState(null);
 
   // Récupérer les données
   const fetchCandidats = useCallback(async () => {
@@ -265,7 +269,6 @@ const CandidatsPage = () => {
       const response = await axios.get('/candidats');
       
       if (response.data.success) {
-        console.log('Données reçues:', response.data);
         setData(response.data);
         
         // Initialiser toutes les catégories comme ouvertes
@@ -290,7 +293,7 @@ const CandidatsPage = () => {
     
     const interval = setInterval(() => {
       fetchCandidats();
-    }, 30000);
+    }, 1800000);
     
     return () => clearInterval(interval);
   }, [fetchCandidats]);
@@ -339,13 +342,22 @@ const CandidatsPage = () => {
 
   // Gestion des clics
   const handleVoteClick = (candidat) => {
-    if (!user) {
-      navigate('/login', { state: { from: `/candidats/${nomEdition}` } });
+    
+    // Vérifier si le vote est ouvert
+    if (!isVoteOpen()) {
+      alert('Les votes ne sont pas ouverts actuellement');
       return;
     }
     
-    setSelectedCandidat(candidat);
-    setVoteModalOpen(true);
+    navigate('/payment', {
+      state: {
+        candidat,
+        edition: data.edition,
+        category: data.categories?.find(c => 
+          c.candidats?.some(cand => cand.id === candidat.id)
+        )
+      }
+    });
   };
 
   const handlePhotoClick = (photo, candidat) => {
@@ -355,7 +367,6 @@ const CandidatsPage = () => {
   };
 
   const handleVideoClick = (videoUrl, candidat) => {
-    console.log('Video URL:', videoUrl);
     if (videoUrl) {
       setSelectedVideo(videoUrl);
       setSelectedCandidatInfo(candidat);
@@ -371,6 +382,8 @@ const CandidatsPage = () => {
     setSelectedPhoto('');
     setSelectedVideo('');
     setSelectedCandidatInfo(null);
+    setPaymentModalOpen(false);
+    setSelectedCandidatForPayment(null);
   };
 
   const toggleCategory = (categoryId) => {
@@ -378,6 +391,23 @@ const CandidatsPage = () => {
       ...prev,
       [categoryId]: !prev[categoryId]
     }));
+  };
+
+  const handlePaymentSuccess = (paymentData) => {
+    // Rafraîchir les données sans recharger la page
+    fetchCandidats();
+    
+    // Fermer le modal
+    setPaymentModalOpen(false);
+    setSelectedCandidatForPayment(null);
+    
+    // Afficher un message de succès
+    alert('Votre vote a été enregistré avec succès !');
+  };
+
+  const handlePaymentError = (error) => {
+    // Afficher l'erreur
+    alert(`Erreur de paiement: ${error.message || 'Une erreur est survenue'}`);
   };
 
   // Fonctions utilitaires
@@ -729,320 +759,319 @@ const CandidatsPage = () => {
     </Dialog>
   );
 
-  // Modal vidéo
-// Modal vidéo corrigé avec gestion TikTok
-const renderVideoModal = () => {
-  const isYouTube = selectedVideo?.includes('youtube.com') || selectedVideo?.includes('youtu.be');
-  const isTikTok = selectedVideo?.includes('tiktok.com');
-  const youTubeId = isYouTube ? getYouTubeId(selectedVideo) : null;
+  // Modal vidéo corrigé avec gestion TikTok
+  const renderVideoModal = () => {
+    const isYouTube = selectedVideo?.includes('youtube.com') || selectedVideo?.includes('youtu.be');
+    const isTikTok = selectedVideo?.includes('tiktok.com');
+    const youTubeId = isYouTube ? getYouTubeId(selectedVideo) : null;
 
-  // Nouvelle fonction pour extraire l'ID TikTok depuis l'URL
-  const getTikTokId = (url) => {
-    if (!url) return null;
-    try {
-      // Extraction de l'ID depuis différentes formes d'URL TikTok
-      const patterns = [
-        /tiktok\.com\/@[\w.-]+\/video\/(\d+)/,
-        /tiktok\.com\/video\/(\d+)/,
-        /vm\.tiktok\.com\/[\w]+\/?/,
-        /vt\.tiktok\.com\/[\w]+\/?/
-      ];
-      
-      for (const pattern of patterns) {
-        const match = url.match(pattern);
-        if (match && match[1]) return match[1];
-      }
-      
-      // Si c'est une URL courte, on la garde telle quelle
-      return null;
-    } catch (err) {
-      console.error('Erreur parsing TikTok URL:', err);
-      return null;
-    }
-  };
-
-  const tiktokId = isTikTok ? getTikTokId(selectedVideo) : null;
-
-  return (
-    <Dialog
-      open={videoModalOpen}
-      onClose={handleCloseModals}
-      TransitionComponent={ScaleTransition}
-      maxWidth="md"
-      fullWidth
-      PaperProps={{
-        sx: {
-          animation: videoModalOpen ? 'videoModalOpen 0.6s cubic-bezier(0.4, 0, 0.2, 1)' : 'none',
-          maxHeight: '90vh'
+    // Nouvelle fonction pour extraire l'ID TikTok depuis l'URL
+    const getTikTokId = (url) => {
+      if (!url) return null;
+      try {
+        // Extraction de l'ID depuis différentes formes d'URL TikTok
+        const patterns = [
+          /tiktok\.com\/@[\w.-]+\/video\/(\d+)/,
+          /tiktok\.com\/video\/(\d+)/,
+          /vm\.tiktok\.com\/[\w]+\/?/,
+          /vt\.tiktok\.com\/[\w]+\/?/
+        ];
+        
+        for (const pattern of patterns) {
+          const match = url.match(pattern);
+          if (match && match[1]) return match[1];
         }
-      }}
-    >
-      <DialogTitle sx={{ 
-        background: `linear-gradient(135deg, ${PALETTE.RED_DARK} 0%, ${PALETTE.BROWN} 100%)`,
-        color: PALETTE.WHITE,
-        borderBottom: `1px solid ${PALETTE.OR}40`,
-        p: { xs: 2, sm: 3 }
-      }}>
-        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-            <VideoLibraryIcon sx={{ fontSize: 28 }} />
-            <Box>
-              <Typography variant="h6" fontWeight="bold" sx={{ fontSize: { xs: '1rem', sm: '1.25rem' } }}>
-                Vidéo du talent
+        
+        // Si c'est une URL courte, on la garde telle quelle
+        return null;
+      } catch (err) {
+        console.error('Erreur parsing TikTok URL:', err);
+        return null;
+      }
+    };
+
+    const tiktokId = isTikTok ? getTikTokId(selectedVideo) : null;
+
+    return (
+      <Dialog
+        open={videoModalOpen}
+        onClose={handleCloseModals}
+        TransitionComponent={ScaleTransition}
+        maxWidth="md"
+        fullWidth
+        PaperProps={{
+          sx: {
+            animation: videoModalOpen ? 'videoModalOpen 0.6s cubic-bezier(0.4, 0, 0.2, 1)' : 'none',
+            maxHeight: '90vh'
+          }
+        }}
+      >
+        <DialogTitle sx={{ 
+          background: `linear-gradient(135deg, ${PALETTE.RED_DARK} 0%, ${PALETTE.BROWN} 100%)`,
+          color: PALETTE.WHITE,
+          borderBottom: `1px solid ${PALETTE.OR}40`,
+          p: { xs: 2, sm: 3 }
+        }}>
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+              <VideoLibraryIcon sx={{ fontSize: 28 }} />
+              <Box>
+                <Typography variant="h6" fontWeight="bold" sx={{ fontSize: { xs: '1rem', sm: '1.25rem' } }}>
+                  Vidéo du talent
+                </Typography>
+                <Typography variant="caption" sx={{ opacity: 0.9, display: 'block' }}>
+                  {selectedCandidatInfo && formatNomComplet(selectedCandidatInfo).nomComplet}
+                </Typography>
+              </Box>
+            </Box>
+            <IconButton 
+              onClick={handleCloseModals} 
+              sx={{ 
+                color: PALETTE.WHITE,
+                background: 'rgba(255,255,255,0.1)',
+                '&:hover': { background: 'rgba(255,255,255,0.2)' }
+            }}
+            >
+              <CloseIcon />
+            </IconButton>
+          </Box>
+        </DialogTitle>
+        
+        <DialogContent sx={{ p: { xs: 2, sm: 3 }, bgcolor: PALETTE.BLACK }}>
+          {selectedCandidatInfo && (
+            <Box sx={{ mb: 3 }}>
+              <Typography variant="h5" fontWeight="bold" gutterBottom color={PALETTE.WHITE}>
+                {formatNomComplet(selectedCandidatInfo).nomComplet}
               </Typography>
-              <Typography variant="caption" sx={{ opacity: 0.9, display: 'block' }}>
-                {selectedCandidatInfo && formatNomComplet(selectedCandidatInfo).nomComplet}
+              <Typography variant="body2" color="rgba(255,255,255,0.9)" sx={{ mb: 2 }}>
+                Découvrez le talent exceptionnel de ce candidat
               </Typography>
             </Box>
-          </Box>
-          <IconButton 
-            onClick={handleCloseModals} 
-            sx={{ 
-              color: PALETTE.WHITE,
-              background: 'rgba(255,255,255,0.1)',
-              '&:hover': { background: 'rgba(255,255,255,0.2)' }
-            }}
-          >
-            <CloseIcon />
-          </IconButton>
-        </Box>
-      </DialogTitle>
-      
-      <DialogContent sx={{ p: { xs: 2, sm: 3 }, bgcolor: PALETTE.BLACK }}>
-        {selectedCandidatInfo && (
-          <Box sx={{ mb: 3 }}>
-            <Typography variant="h5" fontWeight="bold" gutterBottom color={PALETTE.WHITE}>
-              {formatNomComplet(selectedCandidatInfo).nomComplet}
-            </Typography>
-            <Typography variant="body2" color="rgba(255,255,255,0.9)" sx={{ mb: 2 }}>
-              Découvrez le talent exceptionnel de ce candidat
-            </Typography>
-          </Box>
-        )}
-        
-        <Box sx={{ 
-          position: 'relative',
-          paddingBottom: '56.25%',
-          height: 0,
-          overflow: 'hidden',
-          borderRadius: 3,
-          background: PALETTE.BLACK,
-          mb: 3
-        }}>
-          {isYouTube && youTubeId ? (
-            // Player YouTube
-            <iframe
-              src={`https://www.youtube.com/embed/${youTubeId}?autoplay=1&rel=0&modestbranding=1`}
-              title="Vidéo du candidat"
-              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-              allowFullScreen
-              style={{
-                position: 'absolute',
-                top: 0,
-                left: 0,
-                width: '100%',
-                height: '100%',
-                border: 'none'
-              }}
-            />
-          ) : isTikTok ? (
-            // Player TikTok - Solution optimisée
-            (() => {
-              // Solution 1: Utiliser l'API officielle TikTok si l'ID est disponible
-              if (tiktokId) {
+          )}
+          
+          <Box sx={{ 
+            position: 'relative',
+            paddingBottom: '56.25%',
+            height: 0,
+            overflow: 'hidden',
+            borderRadius: 3,
+            background: PALETTE.BLACK,
+            mb: 3
+          }}>
+            {isYouTube && youTubeId ? (
+              // Player YouTube
+              <iframe
+                src={`https://www.youtube.com/embed/${youTubeId}?autoplay=1&rel=0&modestbranding=1`}
+                title="Vidéo du candidat"
+                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                allowFullScreen
+                style={{
+                  position: 'absolute',
+                  top: 0,
+                  left: 0,
+                  width: '100%',
+                  height: '100%',
+                  border: 'none'
+                }}
+              />
+            ) : isTikTok ? (
+              // Player TikTok - Solution optimisée
+              (() => {
+                // Solution 1: Utiliser l'API officielle TikTok si l'ID est disponible
+                if (tiktokId) {
+                  return (
+                    <iframe
+                      src={`https://www.tiktok.com/embed/v2/${tiktokId}`}
+                      title="Vidéo TikTok du candidat"
+                      allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                      allowFullScreen
+                      style={{
+                        position: 'absolute',
+                        top: 0,
+                        left: 0,
+                        width: '100%',
+                        height: '100%',
+                        border: 'none',
+                        borderRadius: '15px'
+                      }}
+                    />
+                  );
+                }
+                
+                // Solution 2: Fallback - Afficher une image avec un lien
                 return (
-                  <iframe
-                    src={`https://www.tiktok.com/embed/v2/${tiktokId}`}
-                    title="Vidéo TikTok du candidat"
-                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                    allowFullScreen
-                    style={{
+                  <Box
+                    sx={{
                       position: 'absolute',
                       top: 0,
                       left: 0,
                       width: '100%',
                       height: '100%',
-                      border: 'none',
-                      borderRadius: '15px'
-                    }}
-                  />
-                );
-              }
-              
-              // Solution 2: Fallback - Afficher une image avec un lien
-              return (
-                <Box
-                  sx={{
-                    position: 'absolute',
-                    top: 0,
-                    left: 0,
-                    width: '100%',
-                    height: '100%',
-                    display: 'flex',
-                    flexDirection: 'column',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    color: PALETTE.WHITE,
-                    textAlign: 'center',
-                    p: 3,
-                    background: `linear-gradient(135deg, ${PALETTE.BROWN}80 0%, ${PALETTE.RED_DARK}80 100%)`
-                  }}
-                >
-                  <Typography variant="h5" fontWeight="bold" gutterBottom>
-                    Vidéo TikTok
-                  </Typography>
-                  <Typography variant="body1" sx={{ mb: 3, opacity: 0.9 }}>
-                    Pour des raisons techniques, les vidéos TikTok doivent être visionnées directement sur leur plateforme.
-                  </Typography>
-                  <Button
-                    variant="contained"
-                    startIcon={<PlayIcon />}
-                    href={selectedVideo}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    sx={{
-                      background: `linear-gradient(135deg, ${PALETTE.OR} 0%, ${PALETTE.RED_DARK} 100%)`,
+                      display: 'flex',
+                      flexDirection: 'column',
+                      alignItems: 'center',
+                      justifyContent: 'center',
                       color: PALETTE.WHITE,
-                      fontWeight: 'bold',
-                      px: 4,
-                      py: 1.5,
-                      '&:hover': {
-                        background: `linear-gradient(135deg, ${PALETTE.OR_DARK} 0%, ${PALETTE.RED_DARK_LIGHT} 100%)`,
-                        transform: 'translateY(-2px)'
-                      },
-                      transition: 'all 0.3s ease'
+                      textAlign: 'center',
+                      p: 3,
+                      background: `linear-gradient(135deg, ${PALETTE.BROWN}80 0%, ${PALETTE.RED_DARK}80 100%)`
                     }}
                   >
-                    Voir la vidéo sur TikTok
-                  </Button>
-                  <Typography variant="caption" sx={{ mt: 2, opacity: 0.7 }}>
-                    (Ouvre dans un nouvel onglet)
-                  </Typography>
-                </Box>
-              );
-            })()
-          ) : selectedVideo && (selectedVideo.includes('.mp4') || selectedVideo.includes('.webm') || selectedVideo.includes('.mov')) ? (
-            // Player pour vidéos directes (MP4, WebM, etc.)
-            <video 
-              controls 
-              autoPlay
-              style={{
+                    <Typography variant="h5" fontWeight="bold" gutterBottom>
+                      Vidéo TikTok
+                    </Typography>
+                    <Typography variant="body1" sx={{ mb: 3, opacity: 0.9 }}>
+                      Pour des raisons techniques, les vidéos TikTok doivent être visionnées directement sur leur plateforme.
+                    </Typography>
+                    <Button
+                      variant="contained"
+                      startIcon={<PlayIcon />}
+                      href={selectedVideo}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      sx={{
+                        background: `linear-gradient(135deg, ${PALETTE.OR} 0%, ${PALETTE.RED_DARK} 100%)`,
+                        color: PALETTE.WHITE,
+                        fontWeight: 'bold',
+                        px: 4,
+                        py: 1.5,
+                        '&:hover': {
+                          background: `linear-gradient(135deg, ${PALETTE.OR_DARK} 0%, ${PALETTE.RED_DARK_LIGHT} 100%)`,
+                          transform: 'translateY(-2px)'
+                        },
+                        transition: 'all 0.3s ease'
+                      }}
+                    >
+                      Voir la vidéo sur TikTok
+                    </Button>
+                    <Typography variant="caption" sx={{ mt: 2, opacity: 0.7 }}>
+                      (Ouvre dans un nouvel onglet)
+                    </Typography>
+                  </Box>
+                );
+              })()
+            ) : selectedVideo && (selectedVideo.includes('.mp4') || selectedVideo.includes('.webm') || selectedVideo.includes('.mov')) ? (
+              // Player pour vidéos directes (MP4, WebM, etc.)
+              <video 
+                controls 
+                autoPlay
+                style={{
+                  position: 'absolute',
+                  top: 0,
+                  left: 0,
+                  width: '100%',
+                  height: '100%',
+                  objectFit: 'contain'
+                }}
+              >
+                <source src={selectedVideo} type="video/mp4" />
+                Votre navigateur ne supporte pas la lecture de vidéos.
+              </video>
+            ) : (
+              // Aucune vidéo disponible
+              <Box sx={{
                 position: 'absolute',
                 top: 0,
                 left: 0,
                 width: '100%',
                 height: '100%',
-                objectFit: 'contain'
-              }}
-            >
-              <source src={selectedVideo} type="video/mp4" />
-              Votre navigateur ne supporte pas la lecture de vidéos.
-            </video>
-          ) : (
-            // Aucune vidéo disponible
-            <Box sx={{
-              position: 'absolute',
-              top: 0,
-              left: 0,
-              width: '100%',
-              height: '100%',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              color: PALETTE.WHITE,
-              textAlign: 'center'
-            }}>
-              <Box>
-                <Typography variant="h6" gutterBottom>
-                  Aucune vidéo disponible
-                </Typography>
-                {selectedVideo && (
-                  <Button
-                    variant="outlined"
-                    href={selectedVideo}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    sx={{
-                      color: PALETTE.OR,
-                      borderColor: PALETTE.OR,
-                      mt: 2,
-                      '&:hover': {
-                        borderColor: PALETTE.OR_LIGHT,
-                        color: PALETTE.OR_LIGHT
-                      }
-                    }}
-                  >
-                    Accéder au lien
-                  </Button>
-                )}
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                color: PALETTE.WHITE,
+                textAlign: 'center'
+              }}>
+                <Box>
+                  <Typography variant="h6" gutterBottom>
+                    Aucune vidéo disponible
+                  </Typography>
+                  {selectedVideo && (
+                    <Button
+                      variant="outlined"
+                      href={selectedVideo}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      sx={{
+                        color: PALETTE.OR,
+                        borderColor: PALETTE.OR,
+                        mt: 2,
+                        '&:hover': {
+                          borderColor: PALETTE.OR_LIGHT,
+                          color: PALETTE.OR_LIGHT
+                        }
+                      }}
+                    >
+                      Accéder au lien
+                    </Button>
+                  )}
+                </Box>
               </Box>
+            )}
+          </Box>
+          
+          {selectedCandidatInfo && (
+            <Box sx={{ 
+              p: 3, 
+              background: `rgba(212, 175, 55, 0.05)`, 
+              borderRadius: 3,
+              border: `1px solid ${PALETTE.OR}20`
+            }}>
+              <Grid container spacing={2}>
+                <Grid item xs={12} sm={6}>
+                  <Typography variant="body2" color="rgba(255,255,255,0.9)" sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                    <CategoryIcon fontSize="small" />
+                    <strong>Catégorie:</strong> {selectedCandidatInfo.categorie_nom}
+                  </Typography>
+                </Grid>
+                <Grid item xs={12} sm={6}>
+                  <Typography variant="body2" color="rgba(255,255,255,0.9)" sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                    <SchoolIcon fontSize="small" />
+                    <strong>Université:</strong> {selectedCandidatInfo.universite}
+                  </Typography>
+                </Grid>
+                <Grid item xs={12} sm={6}>
+                  <Typography variant="body2" color="rgba(255,255,255,0.9)" sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                    <GroupsIcon fontSize="small" />
+                    <strong>Filière:</strong> {selectedCandidatInfo.filiere}
+                  </Typography>
+                </Grid>
+                <Grid item xs={12} sm={6}>
+                  <Typography variant="body2" color="rgba(255,255,255,0.9)" sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                    <TrendingUpIcon fontSize="small" />
+                    <strong>Votes:</strong> {selectedCandidatInfo.nombre_votes}
+                  </Typography>
+                </Grid>
+              </Grid>
             </Box>
           )}
-        </Box>
+        </DialogContent>
         
-        {selectedCandidatInfo && (
-          <Box sx={{ 
-            p: 3, 
-            background: `rgba(212, 175, 55, 0.05)`, 
-            borderRadius: 3,
-            border: `1px solid ${PALETTE.OR}20`
-          }}>
-            <Grid container spacing={2}>
-              <Grid item xs={12} sm={6}>
-                <Typography variant="body2" color="rgba(255,255,255,0.9)" sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                  <CategoryIcon fontSize="small" />
-                  <strong>Catégorie:</strong> {selectedCandidatInfo.categorie_nom}
-                </Typography>
-              </Grid>
-              <Grid item xs={12} sm={6}>
-                <Typography variant="body2" color="rgba(255,255,255,0.9)" sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                  <SchoolIcon fontSize="small" />
-                  <strong>Université:</strong> {selectedCandidatInfo.universite}
-                </Typography>
-              </Grid>
-              <Grid item xs={12} sm={6}>
-                <Typography variant="body2" color="rgba(255,255,255,0.9)" sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                  <GroupsIcon fontSize="small" />
-                  <strong>Filière:</strong> {selectedCandidatInfo.filiere}
-                </Typography>
-              </Grid>
-              <Grid item xs={12} sm={6}>
-                <Typography variant="body2" color="rgba(255,255,255,0.9)" sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                  <TrendingUpIcon fontSize="small" />
-                  <strong>Votes:</strong> {selectedCandidatInfo.nombre_votes}
-                </Typography>
-              </Grid>
-            </Grid>
-          </Box>
-        )}
-      </DialogContent>
-      
-      <DialogActions sx={{ 
-        p: 2, 
-        background: PALETTE.BLACK,
-        borderTop: `1px solid ${PALETTE.OR}20`
-      }}>
-        {selectedVideo && (
-          <Button 
-            startIcon={<OpenInNewIcon />}
-            href={selectedVideo}
-            target="_blank"
-            rel="noopener noreferrer"
-            sx={{ 
-              color: PALETTE.OR,
-              '&:hover': { 
-                background: 'rgba(212, 175, 55, 0.1)',
-                color: PALETTE.OR_LIGHT
-              }
-            }}
-          >
-            Voir sur la plateforme
-          </Button>
-        )}
-      </DialogActions>
-    </Dialog>
-  );
-};
+        <DialogActions sx={{ 
+          p: 2, 
+          background: PALETTE.BLACK,
+          borderTop: `1px solid ${PALETTE.OR}20`
+        }}>
+          {selectedVideo && (
+            <Button 
+              startIcon={<OpenInNewIcon />}
+              href={selectedVideo}
+              target="_blank"
+              rel="noopener noreferrer"
+              sx={{ 
+                color: PALETTE.OR,
+                '&:hover': { 
+                  background: 'rgba(212, 175, 55, 0.1)',
+                  color: PALETTE.OR_LIGHT
+                }
+              }}
+            >
+              Voir sur la plateforme
+            </Button>
+          )}
+        </DialogActions>
+      </Dialog>
+    );
+  };
 
   // Rendu d'un candidat individuel
   const renderCandidatCard = (candidat, category, index) => {
@@ -1356,7 +1385,7 @@ const renderVideoModal = () => {
                 variant="contained"
                 startIcon={<VoteIcon />}
                 onClick={() => handleVoteClick(candidat)}
-                disabled={hasUserVotedForCandidat(candidat.id) || !isVoteOpen() || !user}
+                disabled={hasUserVotedForCandidat(candidat.id) || !isVoteOpen()}
                 className={isVoteOpen() && !hasUserVotedForCandidat(candidat.id) ? "vote-button-glow" : ""}
                 sx={{
                   background: hasUserVotedForCandidat(candidat.id) 
@@ -1383,9 +1412,7 @@ const renderVideoModal = () => {
                   ? 'Déjà voté ✓' 
                   : !isVoteOpen() 
                     ? 'Vote fermé' 
-                    : !user 
-                      ? 'Se connecter' 
-                      : 'Voter'
+                    : 'Voter'
                 }
               </Button>
             </Box>
@@ -1700,7 +1727,7 @@ const renderVideoModal = () => {
                 <Button 
                   color="inherit" 
                   variant="outlined"
-                  onClick={() => navigate('/login')}
+                  onClick={() => navigate('/login', { state: { returnUrl: window.location.pathname } })}
                   sx={{ 
                     borderColor: PALETTE.WHITE,
                     color: PALETTE.WHITE,
@@ -1730,27 +1757,31 @@ const renderVideoModal = () => {
         {renderCategories()}
       </Container>
 
-      {/* Modals */}
-      {selectedCandidat && (
-        <VoteModal
-          open={voteModalOpen}
-          onClose={(voted) => {
-            setVoteModalOpen(false);
-            if (voted) {
-              fetchCandidats();
-              setSelectedCandidat(null);
-            }
+      {/* Modal de paiement */}
+      {selectedCandidatForPayment && (
+        <PaymentModal
+          open={paymentModalOpen}
+          onClose={() => {
+            setPaymentModalOpen(false);
+            setSelectedCandidatForPayment(null);
           }}
-          candidat={selectedCandidat}
+          candidat={selectedCandidatForPayment}
           edition={data.edition}
+          category={data.categories?.find(c => 
+            c.candidats?.some(cand => cand.id === selectedCandidatForPayment.id)
+          )}
+          onSuccess={handlePaymentSuccess}
+          onPaymentSuccess={handlePaymentSuccess}
+          onPaymentError={handlePaymentError}
         />
       )}
 
+      {/* Modals photo et vidéo */}
       {renderPhotoModal()}
       {renderVideoModal()}
 
       {/* Bouton flottant */}
-      {typeof window !== 'undefined' && window.scrollY > 300 && (
+      {typeof window !== 'undefined' && (
         <Fab
           sx={{
             position: 'fixed',
@@ -1763,7 +1794,8 @@ const renderVideoModal = () => {
             },
             zIndex: 1000,
             transition: 'all 0.3s ease',
-            boxShadow: `0 8px 25px ${PALETTE.RED_DARK}50`
+            boxShadow: `0 8px 25px ${PALETTE.RED_DARK}50`,
+            display: window.scrollY > 300 ? 'flex' : 'none'
           }}
           onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
         >
@@ -1773,5 +1805,6 @@ const renderVideoModal = () => {
     </>
   );
 };
+export { PALETTE };
 
 export default CandidatsPage;
